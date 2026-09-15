@@ -1,0 +1,53 @@
+{
+  "name": "dsh-sidebar-plus",
+  "version": "0.3.6",
+  "description": "Sidebar file-view enhancement for DSH (zero official-file changes, hot-pluggable): a Source view for .md/.markdown — line numbers, in-file search, direct edit & save (auto backup + overwrite protection), adjustable font size; plus find/zoom/in-place editing on the official previews. 中文 README 见 README.md / English: README.en.md",
+  "author": "sailoumili",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "sidebar",
+    "preview",
+    "markdown",
+    "editor",
+    "line-numbers"
+  ],
+  "homepage": "https://github.com/sailoumili/dsh-sidebar-plus",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sailoumili/dsh-sidebar-plus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sailoumili/dsh-sidebar-plus/issues"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "hot-host.cjs",
+    "hot-client.cjs",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-workspace-files"
+      ],
+      "platform": "web"
+    }
+  }
+}
