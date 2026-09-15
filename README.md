@@ -32,8 +32,10 @@
 
 ## 安装
 
+插件已发布到 npm（包名 `dsh-sidebar-plus`），在 DSH 终端里执行：
+
 ```
-dsh plugin --profile web add <包名或路径>
+dsh plugin --profile web add dsh-sidebar-plus
 ```
 
 装完**重启 DSH 一次**加载。之后日常的功能改动（改 `hot-*.cjs`）自动热生效，无需再重启；只有改加载器本身才需要重启。
