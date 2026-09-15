@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-plus",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Sidebar file-view enhancement for DSH (zero official-file changes, hot-pluggable): a Source view for .md/.markdown — line numbers, in-file search, direct edit & save (auto backup + overwrite protection), adjustable font size; plus find/zoom/in-place editing on the official previews. 中文 README 见 README.md / English: README.en.md",
   "author": "sailoumili",
   "keywords": [
