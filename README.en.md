@@ -32,8 +32,10 @@ Click "行号" in the toolbar to show or hide line numbers; off by default.
 
 ## Install
 
+Published on npm as `dsh-sidebar-plus`. From the DSH terminal:
+
 ```
-dsh plugin --profile web add <package-name-or-path>
+dsh plugin --profile web add dsh-sidebar-plus
 ```
 
 Restart DSH once after install. Later day-to-day changes to the hot files (`hot-*.cjs`) apply live within ~2 seconds — no restart, no page refresh. Only changes to the loaders themselves need a restart.
