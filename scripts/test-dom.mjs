@@ -31,7 +31,8 @@ const req = createRequire(path.join(mods, 'noop.cjs'))
 const { JSDOM } = req('jsdom')
 
 const MD = '# 测试标题\n\n第一行 示例内容\n- [ ] 09:00 任务行 #标签\n**加粗** 与普通\n'
-const MD_B64 = Buffer.from(MD, 'utf8').toString('base64')
+const MD_BYTES = new Uint8Array(Buffer.from(MD, 'utf8'))
+const MD_B64 = Buffer.from(MD, 'utf8').toString('base64') // 仅用于旧版 base64 兜底断言
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
   runScripts: 'outside-only',
@@ -81,9 +82,27 @@ const api = win.__loaded.factory((id) => {
 ok(typeof api._test.compileBus === 'function', '浏览器加载器就绪')
 
 // ---- 经加载器的热编译链产出业务（和浏览器运行时完全同路） ----
-const ENV_REMOTE = { workspaceFiles: { readAll: async () => ({ ok: true, value: { absolutePath: FAKE_ABS, version: 'v1', bytes: MD.length, data: MD_B64 } }) } }
+// ---- 假 remote：只实现新版 workspaceFiles.readBytes（返回 Uint8Array）----
+const remoteCalls = { readBytes: [], readAll: 0 }
+const ENV_REMOTE = {
+  workspaceFiles: {
+    readBytes: async (sessionId, p, opts, signal) => {
+      remoteCalls.readBytes.push({ sessionId, path: p, opts, hasSignal: !!signal })
+      return { ok: true, value: { absolutePath: FAKE_ABS, version: 'v1', bytes: MD_BYTES.length, data: MD_BYTES } }
+    },
+  },
+}
 const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE })
-ok(bus.version === '0.3.6', '业务经 compileBus 就绪', bus.version)
+ok(bus.version === '0.4.0', '业务经 compileBus 就绪', bus.version)
+const b1 = bus._test.bytesOf(MD_BYTES)
+const b2 = bus._test.bytesOf(MD_B64)
+const b3 = bus._test.bytesOf(MD_BYTES.buffer)
+const b4 = bus._test.bytesOf(new Uint8ClampedArray(MD_BYTES))
+const dec = (x) => (x ? new TextDecoder().decode(x) : '(null)')
+ok(b1 === MD_BYTES, 'bytesOf: 新版 Uint8Array 直接可用（不解 base64）')
+ok(dec(b2) === MD, 'bytesOf: 旧版 base64 仍能兜底解出')
+ok(dec(b3) === MD, 'bytesOf: ArrayBuffer 也能解')
+ok(dec(b4) === MD, 'bytesOf: 其它 TypedArray 也能解（跨 realm 不靠 instanceof）')
 
 const container = win.document.getElementById('root')
 const props = {
@@ -103,7 +122,7 @@ ok(q('[data-textpreview-line="1"]') && q('[data-textpreview-line="5"]'), '5 行�
 ok(q('[data-textpreview-line="1"] .dshsp-ln').textContent === '1', '行号列文字正确')
 ok(q('[data-textpreview-line="1"]').className.includes('dshsp-h1'), '标题行有着色类')
 ok(q('.dshsp-b') && q('.dshsp-task'), '加粗/任务着色在位')
-ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.3.6', '业务版本标记在 DOM 上（热替换观测点）')
+ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.0', '业务版本标记在 DOM 上（热替换观测点）')
 const btns = () => [...qa('.dshsp-bar button')]
 ok(btns().some((b) => b.textContent.includes('编辑')), '工具栏有「编辑」按钮（无 t 时走中文兜底字典）')
 
@@ -148,7 +167,9 @@ ok(!q('.dshsp-find'), '搜索框里 Esc 关闭')
 const editBtn = btns().find((b) => b.textContent.includes('编辑'))
 await act(async () => { editBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
 ok(!!q('textarea.dshsp-ta'), '进编辑：整文件进 textarea')
-ok(q('textarea.dshsp-ta').value === MD, '编辑初始内容 = readAll 的整文件')
+ok(q('textarea.dshsp-ta').value === MD, '编辑初始内容 = workspaceFiles.readBytes 的整文件')
+ok(remoteCalls.readBytes.length === 1 && remoteCalls.readBytes[0].path === 'temp/sb.md' && remoteCalls.readBytes[0].hasSignal === true,
+  '整文件读取走新版 readBytes(会话, 相对路径, {}, 取消信号)', JSON.stringify(remoteCalls.readBytes[0] || {}))
 patchVisible('.dshsp-ta')
 const ta = q('textarea.dshsp-ta')
 const NEW_TEXT = MD + '追加一行 by hot\n'
@@ -197,8 +218,14 @@ await act(async () => root_.unmount())
   obody.textContent = '样例 可搜文本 searchable now\n第二行 样例 again'
   pane.appendChild(obody)
   win.document.body.appendChild(pane)
-  await act(async () => { await new Promise((r) => setTimeout(r, 900)) })
-  const ogroup = pane.querySelector(':scope > .dshsp-ogroup')
+  // 立刻量：面板进 DOM 后工具条多久挂上（旧实现是每 0.4 秒轮询，最坏要等 0.4s）
+  const tMount = Date.now()
+  await act(async () => { await new Promise((r) => setTimeout(r, 120)) })
+  let ogroup = pane.querySelector(':scope > .dshsp-ogroup')
+  const mountedFast = !!ogroup
+  const mountMs = Date.now() - tMount
+  if (!ogroup) { await act(async () => { await new Promise((r) => setTimeout(r, 900)) }); ogroup = pane.querySelector(':scope > .dshsp-ogroup') }
+  ok(mountedFast, '面板一进 DOM 工具条立即挂上（不再等 0.4 秒轮询）', '约 ' + mountMs + 'ms')
   ok(!!ogroup && ogroup.nextElementSibling === obody, '官方视图出现工具条：插在头部与正文之间（布局流内，不悬浮）')
   ok(win.document.querySelectorAll('.dshsp-ogroup').length === 1 && !win.document.querySelector('[data-dshsp-fab]'), '工具条只有一个，旧悬浮药丸条已废除')
   const obtns = [...ogroup.querySelectorAll('.dshsp-bar button')]
@@ -223,6 +250,16 @@ await act(async () => root_.unmount())
   ok(obtn('编辑').style.display === 'none' && obtn('搜索').style.display === 'none', '编辑态隐藏「编辑/搜索」')
   const ipTa = pane.querySelector('.dshsp-ipwrap textarea.dshsp-ta')
   ok(pane.querySelectorAll('.dshsp-ipwrap .dshsp-egut div').length === ipTa.value.split('\n').length, '编辑框左侧行号数 = 行数')
+  ok(ipTa.selectionStart === 0, '就地编辑进框时光标在第 1 行（不再被 focus 甩到文件末尾）', 'selectionStart=' + ipTa.selectionStart)
+  const ipJump = pane.querySelector('.dshsp-jump')
+  ok(!!ipJump, '就地编辑也有「跳行」输入框')
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set
+    setter.call(ipJump, '5')
+    ipJump.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  const ipOff5 = MD.split('\n').slice(0, 4).join('\n').length + 1
+  ok(ipTa.selectionStart === ipOff5, '就地编辑输入行号回车：光标跳到第 5 行开头', 'selectionStart=' + ipTa.selectionStart + ' 期望 ' + ipOff5)
   await act(async () => {
     const setter = Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value').set
     setter.call(ipTa, ipTa.value + '追加 by inplace\n')
@@ -290,8 +327,204 @@ await act(async () => root_.unmount())
   pane.setAttribute('data-document-preview', 'official/markdown')
   await act(async () => { await new Promise((r) => setTimeout(r, 900)) })
   ok(pane.contains(ogroup), '切回官方视图工具条自动补回')
+  // ================= 4.6) 官方对比视图（changes-review）增强 =================
+  {
+    pane.setAttribute('hidden', '')
+    const scopeEl = win.document.createElement('div')
+    scopeEl.setAttribute('data-sidebar-right-session', 's1')
+    const rroot = win.document.createElement('div')
+    rroot.setAttribute('data-changes-review', '1')
+    const rhead = win.document.createElement('div')
+    const rfiler = win.document.createElement('button')
+    rfiler.setAttribute('data-review-file', 'temp/rv.md')
+    rhead.appendChild(rfiler)
+    const splitBtn = win.document.createElement('button')
+    splitBtn.setAttribute('data-review-tool', 'split')
+    splitBtn.setAttribute('aria-pressed', 'false')
+    const wrapBtn = win.document.createElement('button')
+    wrapBtn.setAttribute('data-review-tool', 'wrap')
+    wrapBtn.setAttribute('aria-pressed', 'true')
+    wrapBtn.addEventListener('click', () => { wrapBtn.setAttribute('aria-pressed', 'false') })
+    rhead.appendChild(splitBtn)
+    rhead.appendChild(wrapBtn)
+    rroot.appendChild(rhead)
+    const rbody = win.document.createElement('div')
+    rbody.setAttribute('data-review-view', 'unified')
+    rroot.appendChild(rbody)
+    const mkRow = (num, text) => {
+      const row = win.document.createElement('div')
+      row.setAttribute('data-diff-line', 'context')
+      const n = win.document.createElement('span')
+      n.textContent = String(num)
+      const tx = win.document.createElement('span')
+      tx.textContent = text
+      row.appendChild(n)
+      row.appendChild(tx)
+      return row
+    }
+    const addColumns = () => {
+      if (rbody.querySelector('[data-diff-side="right"]')) return
+      const cols = win.document.createElement('div')
+      const left = win.document.createElement('div')
+      left.setAttribute('data-diff-side', 'left')
+      left.appendChild(mkRow(1, '左边 旧内容 alpha'))
+      left.appendChild(mkRow(3, '左边 内容乙'))
+      const right = win.document.createElement('div')
+      right.setAttribute('data-diff-side', 'right')
+      right.appendChild(mkRow(2, '右边 新内容 alpha'))
+      right.appendChild(mkRow(3, '右边 内容丙'))
+      cols.appendChild(left)
+      cols.appendChild(right)
+      rbody.appendChild(cols)
+    }
+    splitBtn.addEventListener('click', () => { splitBtn.setAttribute('aria-pressed', 'true'); addColumns() })
+    scopeEl.appendChild(rroot)
+    win.document.body.appendChild(scopeEl)
+
+    await act(async () => { await new Promise((r) => setTimeout(r, 150)) })
+    let rgroup = rroot.querySelector(':scope > .dshsp-ogroup')
+    if (!rgroup) { await act(async () => { await new Promise((r) => setTimeout(r, 900)) }); rgroup = rroot.querySelector(':scope > .dshsp-ogroup') }
+    ok(!!rgroup, '对比页出现插件工具条（布局流内，跟着官方头部）')
+    ok(!!rgroup && rgroup.previousElementSibling === rhead, '工具条插在官方头部之后')
+    const rbtns = () => [...rgroup.querySelectorAll('.dshsp-bar button')]
+    const rbtn = (t) => rbtns().find((b) => (b.textContent || '').trim() === t || (b.textContent || '').trim().startsWith(t))
+    const rfindRow = rgroup.querySelector('.dshsp-find')
+    ok(!!rbtn('编辑右侧') && !!rbtn('搜索') && !!rbtn('A−') && !!rbtn('A+'), '对比页按钮齐全（编辑右侧/搜索/字号）')
+    ok(!!rfindRow && rfindRow.style.display === 'none', '对比页搜索条默认收起')
+    ok(rbtn('保存').style.display === 'none' && rbtn('退出编辑').style.display === 'none', '对比页阅读态不显示保存/退出')
+
+    // 编辑：官方此刻是单栏，点「编辑右侧」应先替它切到「左右分栏 + 不换行」
+    const savesBefore = fetchCalls.filter((c) => c.url.startsWith('/dsh-sp/save')).length
+    const readsBefore = remoteCalls.readBytes.length
+    await act(async () => { rbtn('编辑右侧').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 600)) })
+    ok(splitBtn.getAttribute('aria-pressed') === 'true' && wrapBtn.getAttribute('aria-pressed') === 'false', '点「编辑右侧」先替官方切到左右分栏 + 不换行')
+    const leftCol = rbody.querySelector('[data-diff-side="left"]')
+    const rightCol = rbody.querySelector('[data-diff-side="right"]')
+    const rbox = rroot.querySelector('[data-dshsp-rvedit]')
+    const colsEl = rbox && rbox.parentElement
+    ok(!!rbox && !!leftCol && !!rightCol, '对比页进入编辑：右侧出现编辑框')
+    ok(rightCol.style.display === 'none' && leftCol.style.display !== 'none', '只有右侧被换成编辑器，左侧保持只读对照')
+    ok(colsEl === leftCol.parentElement && colsEl === rightCol.parentElement && [...colsEl.children].filter((el) => el.style.display !== 'none').length === 2,
+      '编辑器与左栏同格并排（被隐藏的官方右栏不占格）')
+    const rta = rbox.querySelector('textarea.dshsp-ta')
+    ok(!!rta && rta.value === MD, '编辑初始内容 = 磁盘上的当前文件')
+    ok(rta.selectionStart === 0, '进编辑光标落在第 1 行（不再被 focus 甩到文件末尾）', 'selectionStart=' + rta.selectionStart)
+    const jump = rgroup.querySelector('.dshsp-jump')
+    ok(!!jump && jump.parentElement.style.display !== 'none', '对比页编辑态出现「跳行」输入框')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set
+      setter.call(jump, '5')
+      jump.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    })
+    const off5 = MD.split('\n').slice(0, 4).join('\n').length + 1
+    ok(rta.selectionStart === off5, '输入行号回车：光标跳到第 5 行开头', 'selectionStart=' + rta.selectionStart + ' 期望 ' + off5)
+    ok(remoteCalls.readBytes[readsBefore] && remoteCalls.readBytes[readsBefore].sessionId === 's1' && remoteCalls.readBytes[readsBefore].path === 'temp/rv.md',
+      '对比页按「会话 id + 相对路径」读整文件', JSON.stringify(remoteCalls.readBytes[readsBefore] || {}))
+    ok(rbtn('保存').style.display !== 'none' && rbtn('退出编辑').style.display !== 'none' && rbtn('编辑右侧').style.display === 'none', '对比页编辑态切换按钮')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value').set
+      setter.call(rta, MD + '对比页追加\n')
+      rta.dispatchEvent(new win.Event('input', { bubbles: true }))
+    })
+    ok(/保存 \*/.test(rbtn('保存').textContent), '对比页改动后 保存 * 脏标记')
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)) })
+    const rSaved = fetchCalls.filter((c) => c.url.startsWith('/dsh-sp/save')).pop()
+    ok(fetchCalls.filter((c) => c.url.startsWith('/dsh-sp/save')).length === savesBefore + 1 && JSON.parse(rSaved.init.body).text.includes('对比页追加'), '对比页 Ctrl+S 保存，正文完整')
+    ok(JSON.parse(rSaved.init.body).abs === FAKE_ABS && JSON.parse(rSaved.init.body).ifMtimeMs === 1000, '对比页保存带绝对路径 + 编辑基线')
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)) })
+    ok(!rroot.querySelector('[data-dshsp-rvedit]') && rightCol.style.display !== 'none', 'Esc 退出对比页编辑，右栏恢复为对比内容')
+
+    // 点行选起点：点左栏第 2 行（行号 3）→ 映射到右栏同一行 → 再点编辑就从第 3 行开始
+    const leftRows = leftCol.querySelectorAll('[data-diff-line]')
+    await act(async () => { leftRows[1].dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    ok(rightCol.querySelectorAll('[data-diff-line]')[1].className.includes('dshsp-anchor'), '点对比页任意一行：右栏对应行被标成编辑起点')
+    ok(leftRows[1].className.includes('dshsp-anchor') === false, '起点标记只落在右栏（左栏是只读历史）')
+    await act(async () => { rbtn('编辑右侧').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)) })
+    const rta2 = rroot.querySelector('[data-dshsp-rvedit] textarea.dshsp-ta')
+    const off3 = MD.split('\n').slice(0, 2).join('\n').length + 1
+    ok(!!rta2 && rta2.selectionStart === off3, '编辑从刚才选的那一行开始（第 3 行），不再跳到别处', 'selectionStart=' + (rta2 && rta2.selectionStart) + ' 期望 ' + off3)
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)) })
+
+    // 搜索：一次遍历左右两侧
+    const revKey = new win.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })
+    await act(async () => { win.dispatchEvent(revKey) })
+    ok(revKey.defaultPrevented, '对比页 Ctrl+F 拦下原生查找')
+    ok(rfindRow.style.display === 'flex', '对比页搜索条展开')
+    const rin = rfindRow.querySelector('input')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set
+      setter.call(rin, '内容')
+      rin.dispatchEvent(new win.Event('input', { bubbles: true }))
+    })
+    const rcount = () => rfindRow.querySelector('.dshsp-count').textContent
+    const rside = (t) => [...rfindRow.querySelectorAll('button')].find((b) => b.textContent === t)
+    ok(rcount() === '1 / 4', '默认两侧一起搜：左 2 处 + 右 2 处', rcount())
+    ok(!!rside('两侧') && rside('两侧').className.includes('dshsp-btn-on'), '默认选中「两侧」')
+    await act(async () => { rside('右').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    ok(rcount() === '1 / 2' && rside('右').className.includes('dshsp-btn-on'), '点「右」只搜右侧：只算右栏 2 处', rcount())
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })) })
+    ok(rcount() === '2 / 2', '只搜右侧时上下箭头只在右侧自己的顺序里走', rcount())
+    await act(async () => { rside('左').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    ok(rcount() === '1 / 2', '点「左」只搜左侧：2 处', rcount())
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })) })
+    ok(rcount() === '2 / 2', '上下箭头按所选那一侧自己的顺序走', rcount())
+    await act(async () => { rside('两侧').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    ok(rcount() === '1 / 4', '切回「两侧」恢复 4 处', rcount())
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    ok(rfindRow.style.display === 'none', '对比页 Esc 关闭搜索条')
+
+    // 字号：缩放打在对比体内容区，左右两侧一起变
+    ok(bus.css.includes('[data-changes-review][data-dshsp-rv]>[data-review-view]>*{zoom:var(--dshsp-rvz,1)}'), '对比页字号规则作用于对比体内容区（两侧同缩放）')
+    await act(async () => { rbtn('A+').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    const rz = rroot.style.getPropertyValue('--dshsp-rvz')
+    ok(Number(rz) > 1 && rroot.getAttribute('data-dshsp-rv') === '1', '对比页 A+ 放大（一个变量管住两侧）', 'zoom=' + rz)
+    ok(/px$/.test((rbtn('A+').previousElementSibling || {}).textContent || ''), '对比页字号数字夹在 A± 之间', (rbtn('A+').previousElementSibling || {}).textContent)
+    await act(async () => { rbtn('A+').previousElementSibling.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    ok(!rroot.hasAttribute('data-dshsp-rv') && rroot.style.getPropertyValue('--dshsp-rvz') === '', '点字号数字回到官方字号')
+    const revWheel = new win.WheelEvent('wheel', { ctrlKey: true, deltaY: -100, bubbles: true, cancelable: true })
+    await act(async () => { rbody.dispatchEvent(revWheel) })
+    ok(revWheel.defaultPrevented === true && Number(rroot.style.getPropertyValue('--dshsp-rvz')) > 1, '对比页 Ctrl+滚轮也改两侧字号')
+    await act(async () => { rbtn('A+').previousElementSibling.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+
+    // 单边对比（例如新增文件只有新增行）：官方根本不画左右栏，编辑器占满对比体
+    rroot.remove()
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)) })
+    const wroot = win.document.createElement('div')
+    wroot.setAttribute('data-changes-review', '1')
+    const whead = win.document.createElement('div')
+    const wfile = win.document.createElement('button')
+    wfile.setAttribute('data-review-file', 'temp/new.md')
+    whead.appendChild(wfile)
+    wroot.appendChild(whead)
+    const wbody = win.document.createElement('div')
+    wbody.setAttribute('data-review-view', 'unified')
+    wbody.textContent = '只有新增行'
+    wroot.appendChild(wbody)
+    scopeEl.appendChild(wroot)
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)) })
+    const wgroup = wroot.querySelector(':scope > .dshsp-ogroup')
+    const wbtn = (t) => wgroup && [...wgroup.querySelectorAll('.dshsp-bar button')].find((b) => (b.textContent || '').trim() === t)
+    ok(!!wgroup && !!wbtn('编辑右侧'), '第二个对比页（单边）也挂上工具条')
+    const wside = (t) => [...wgroup.querySelectorAll('.dshsp-find button')].find((b) => b.textContent === t)
+    ok(!!wside('左') && wside('左').disabled === true && wside('右').disabled === true && wside('两侧').className.includes('dshsp-btn-on'),
+      '单边对比没有左右栏：「左/右」自动禁用并回落两侧')
+    await act(async () => { wbtn('编辑右侧').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 1200)) })
+    ok(!!wroot.querySelector('[data-dshsp-rvedit]') && wbody.style.display === 'none' && !wbody.querySelector('[data-diff-side="right"]'),
+      '单边对比没有右栏时编辑器占满对比体（官方历史内容整体让位，只写当前文件）')
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)) })
+    ok(!wroot.querySelector('[data-dshsp-rvedit]') && wbody.style.display !== 'none', 'Esc 退出后单边对比体恢复显示')
+    scopeEl.remove()
+  }
+
   await act(async () => { bus.teardown() })
-  ok(!win.document.querySelector('.dshsp-ogroup'), 'teardown 后增强层工具条回收')
+  ok(!win.document.querySelector('.dshsp-ogroup'), 'teardown 后增强层工具条回收（含对比页）')
   pane.remove()
 }
 
@@ -321,7 +554,7 @@ await act(async () => root_.unmount())
   ok(reg.def && reg.def.id === api._test.ID && reg.def.extensions.includes('md') && reg.def.loading === 'text-pages', '加载器注册渲染器（md 家族、text-pages）')
   ok(Array.isArray(reg.def.extensions) && reg.def.extensions.length === 2 && reg.def.extensions[0] === 'md', '扩展名单是活数组且已收窄到 md/markdown（其余格式保持官方视图）', String(reg.def.extensions.length))
   ok(reg.slotKey === api._test.ID && reg.Shell === api._test.Shell, '空壳组件挂上文档插槽')
-  ok(api._test.bus.cur && api._test.bus.cur.version === '0.3.6', '首轮 tick 已完成业务热装载')
+  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.0', '首轮 tick 已完成业务热装载')
   ok(!!win.document.querySelector('style[data-plugin-css="dsh-sidebar-plus"]'), '样式由业务 css 注入')
   for (const fn of effectDisposers) { try { const inner = fn(); if (typeof inner === 'function') inner() } catch (e) { /* ignore */ } }
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })

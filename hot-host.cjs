@@ -1,5 +1,5 @@
 'use strict';
-const VERSION = '0.3.1';
+const VERSION = '0.4.0';
 
 const MAX_TEXT_BYTES = 32 * 1024 * 1024;
 const KEEP_PER_BASENAME = 20;
@@ -120,8 +120,29 @@ function statHandler(searchParams) {
   return { body: { ok: true, abs: target.abs, mtimeMs: cur.mtimeMs, bytes: cur.bytes } };
 }
 
+/* 页面侧上报的时间点，只存进程内存（挂 globalThis，热更新重建也不丢），GET /dsh-sp/marks 读回。 */
+function marksStore() {
+  const g = globalThis;
+  if (!Array.isArray(g.__dshSpMarks)) g.__dshSpMarks = [];
+  return g.__dshSpMarks;
+}
+
+function recordMark(searchParams) {
+  try {
+    const g = searchParams && typeof searchParams.get === 'function' ? searchParams.get.bind(searchParams) : () => null;
+    const box = marksStore();
+    box.push({
+      n: String(g('n') || '?').slice(0, 40),
+      t: Number(g('t')),
+      s: Number(g('s')),
+      at: Number(g('at')) || Date.now(),
+    });
+    if (box.length > 400) box.splice(0, box.length - 400);
+  } catch (err) {  }
+  return { body: { ok: true } };
+}
+
 const handlers = {
-  health: () => ({ body: { ok: true, version: VERSION, role: 'host-business', backupDir: BACKUP_DIR } }),
   stat: (searchParams) => statHandler(searchParams),
   save: (bodyObj) => saveFile({
     abs: bodyObj && bodyObj.abs,
@@ -129,6 +150,8 @@ const handlers = {
     ifMtimeMs: bodyObj && bodyObj.ifMtimeMs,
     force: !!(bodyObj && bodyObj.force === true),
   }),
+  mark: (searchParams) => recordMark(searchParams),
+  marks: () => ({ body: { ok: true, marks: marksStore().slice(-200) } }),
 };
 
 const teardown = function () {  };

@@ -1,6 +1,6 @@
 'use strict';
 const react = ENV.react;
-const VERSION = '0.3.6';
+const VERSION = '0.4.0';
 
 const zh = {
   'viewer.label': '源编辑',
@@ -16,6 +16,14 @@ const zh = {
   'font.in': '缩小字号（或 Ctrl+向下滚轮）',
   'font.out': '放大字号（或 Ctrl+向上滚轮）',
   'font.reset': '点击恢复默认 14px',
+  'rv.edit.tip': '编辑右侧（当前文件），左侧是只读的历史快照；会先切成左右分栏、不换行',
+  'rv.find.tip': '搜索（左右两侧一起搜）',
+  'rv.zoom.in': '缩小字号（左右两侧一起变）',
+  'rv.zoom.out': '放大字号（左右两侧一起变）',
+  'rv.zoom.reset': '点击恢复对比视图的官方字号（左右两侧一起变）',
+  'rv.find.holder': '搜索（两侧一起搜；可用「左/右」只搜一侧。↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）',
+  'rv.editing': '编辑中：只改右侧的当前文件，左侧只读；Ctrl+S 保存，Esc 退出',
+  'rv.saved': '已保存；左侧对比是这一轮的历史快照，不会随之更新',
 };
 const en = {
   'viewer.label': 'Source',
@@ -31,14 +39,24 @@ const en = {
   'font.in': 'Smaller text (or Ctrl+wheel down)',
   'font.out': 'Larger text (or Ctrl+wheel up)',
   'font.reset': 'Click to reset to 14px',
+  'rv.edit.tip': "Edit the right side (the current file); the left side is a read-only snapshot. Switches to side-by-side, unwrapped",
+  'rv.find.tip': 'Find (searches both sides)',
+  'rv.zoom.in': 'Smaller text (both sides)',
+  'rv.zoom.out': 'Larger text (both sides)',
+  'rv.zoom.reset': 'Click to restore the comparison default size (both sides)',
+  'rv.find.holder': 'Find in both sides, or use 左/右 for one (Enter/↓ next, ↑ previous, Esc close)',
+  'rv.editing': 'Editing the right side only; the left side is read-only. Ctrl+S saves, Esc exits',
+  'rv.saved': 'Saved; the left comparison is this turn\'s snapshot and does not change',
 };
 
 let sharedFontPx = 14;
 try {
+  // '13' 是旧版本写坏过的值，遇到就丢弃、回落默认
   const raw = window.localStorage.getItem('dsh-sidebar-plus.fontPx');
-  if (raw === '13') { window.localStorage.removeItem('dsh-sidebar-plus.fontPx'); }
-  const v = parseInt(raw, 10);
-  if (raw !== '13' && v >= 10 && v <= 28) sharedFontPx = v;
+  const bad = raw === '13';
+  if (bad) { window.localStorage.removeItem('dsh-sidebar-plus.fontPx'); }
+  const v = parseInt(bad ? '' : raw, 10);
+  if (v >= 10 && v <= 28) sharedFontPx = v;
 } catch (e) { }
 
 const TITLE = '源编辑';
@@ -117,8 +135,17 @@ const CSS = [
   '[data-document-preview$="/text"][data-dshsp-lineno="on"] [data-textpreview-line]{padding-left:calc(var(--dshsp-lnpad) + var(--dshsp-lnw) + var(--dshsp-lngap));text-indent:calc(-1 * (var(--dshsp-lnw) + var(--dshsp-lngap)))}',
   '[data-document-preview$="/text"][data-dshsp-lineno="on"] [data-textpreview-line]::before{content:attr(data-textpreview-line);display:inline-block;width:var(--dshsp-lnw);padding-right:var(--dshsp-lngap);text-align:right;color:var(--dsw-alias-label-tertiary,rgba(128,128,128,.6));user-select:none;-webkit-user-select:none;font-variant-numeric:tabular-nums}',
   '.dshsp-ipwrap{flex:auto;display:flex;min-height:0;min-width:0}',
+  '.dshsp-jumpbox{flex:none;display:inline-flex;align-items:center;gap:3px}',
+  '.dshsp-jlabel{opacity:.7;font-size:11px}',
+  '.dshsp-jump{width:4.2em;border:.5px solid rgba(128,128,128,.4);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:12px;padding:2px 5px;outline:none}',
+  '.dshsp-jump:focus{border-color:rgba(64,150,255,.7)}',
+  '[data-changes-review] [data-diff-line].dshsp-anchor{background:rgba(64,150,255,.14)}',
+  '[data-changes-review][data-dshsp-rv]>[data-review-view]>*{zoom:var(--dshsp-rvz,1)}',
+  '[data-changes-review] .dshsp-rved{display:flex;flex:auto;min-width:0;min-height:0;overflow:hidden}',
   '::highlight(dshsp-find){background:rgba(255,205,0,.45)}',
   '::highlight(dshsp-find-cur){background:rgba(255,130,20,.85)}',
+  '::highlight(dshsp-rvfind){background:rgba(255,205,0,.45)}',
+  '::highlight(dshsp-rvfind-cur){background:rgba(255,130,20,.85)}',
 ].join('\n');
 
 const FILE_ADDRESS_PREFIX = 'dsh-resource://file/';
@@ -147,6 +174,18 @@ function parseFileAddress(address) {
   } catch (e) {
     return void 0;
   }
+}
+
+/* 对比视图（官方 changes-review）只给相对路径 + 会话 id，这里拼成会话作用域的文件地址。 */
+function sessionFileAddress(sessionId, raw) {
+  const norm = String(raw == null ? '' : raw).replace(/\\/g, '/').replace(/^(?:\.\/)+/, '');
+  const seg = norm.split('/').map((s) => encodeURIComponent(s).replace(/%3A/gi, ':')).join('/');
+  const sid = encodeURIComponent(String(sessionId == null ? '' : sessionId)).replace(/%3A/gi, ':');
+  return FILE_ADDRESS_PREFIX + 'session/' + sid + '/' + seg;
+}
+
+function isHiddenEl(el) {
+  try { return !!(el && el.closest && el.closest('[hidden],[aria-hidden="true"]')); } catch (e) { return false; }
 }
 
 function splitLines(text) {
@@ -181,7 +220,7 @@ function matchesByLine(matches) {
   return map;
 }
 
-const INLINE_RE = /(`[^`\n]*`|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)/g; /* ref-check:忽略 */
+const INLINE_RE = /(`[^`\n]*`|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)/g; /* ref-check:忽略（正则字面量，不是文件引用） */
 function segmentMarkdown(line) {
   const rest0 = String(line);
   const chunks = [];
@@ -251,6 +290,68 @@ function fromEditorText(draft, meta) {
   if (meta && meta.bom) t = '\uFEFF' + t;
   return t;
 }
+/* 把文本灌进文本框后直接 focus()，浏览器会把视图滚到末尾 —— 必须显式把光标与滚动条放回目标行。
+   否则「点编辑」看到的是文件最后一屏，而不是用户想看的那一行。 */
+function lineStartOffset(text, line) {
+  const s = String(text == null ? '' : text);
+  const n = Math.max(1, Math.round(line) || 1);
+  let pos = 0;
+  for (let i = 1; i < n; i++) {
+    const at = s.indexOf('\n', pos);
+    if (at === -1) return s.length;
+    pos = at + 1;
+  }
+  return pos;
+}
+function lineOfCaret(ta) {
+  try {
+    const upto = String(ta.value || '').slice(0, ta.selectionStart || 0);
+    return upto.split('\n').length;
+  } catch (e) { return 1; }
+}
+function caretToLine(ta, line) {
+  if (!ta) return 0;
+  const total = String(ta.value || '').split('\n').length;
+  const n = Math.min(Math.max(1, Math.round(line) || 1), total);
+  try { ta.focus(); } catch (e) { }
+  const pos = lineStartOffset(ta.value, n);
+  try { ta.setSelectionRange(pos, pos); } catch (e) { }
+  const show = function () {
+    try {
+      const lh = parseFloat(getComputedStyle(ta).lineHeight);
+      const step = Number.isFinite(lh) && lh > 0 ? lh : 20;
+      ta.scrollTop = Math.max(0, (n - 1) * step - ta.clientHeight / 3);
+    } catch (e) { }
+  };
+  show();
+  if (typeof requestAnimationFrame === 'function') { try { requestAnimationFrame(show); } catch (e) { } }
+  return n;
+}
+/* 对比页一行 DOM 里的「新版本行号」：分栏是自身行号，单栏是第二个号，分栏+换行取右格。 */
+function rowLineNo(row) {
+  try {
+    const kids = Array.prototype.slice.call(row.children);
+    const first = kids[0];
+    if (first && first.tagName === 'SPAN' && !/^\d+$/.test(String(first.textContent || '').trim())) {
+      const inner = first.firstElementChild;
+      if (inner && inner.tagName === 'SPAN' && /^\d+$/.test(String(inner.textContent || '').trim())) {
+        let n = 0;
+        for (const kid of kids) {
+          const cell = kid.firstElementChild;
+          if (cell && cell.tagName === 'SPAN' && /^\d+$/.test(String(cell.textContent || '').trim())) n = parseInt(cell.textContent, 10);
+        }
+        return n;
+      }
+    }
+    let n = 0;
+    for (const kid of kids) {
+      if (kid.tagName !== 'SPAN' || !/^\d+$/.test(String(kid.textContent || '').trim())) break;
+      n = parseInt(kid.textContent, 10);
+    }
+    return n;
+  } catch (e) { return 0; }
+}
+
 function humanBytes(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return '';
@@ -259,20 +360,66 @@ function humanBytes(n) {
   return (v / 1024 / 1024).toFixed(2) + ' MB';
 }
 function msgOf(e) { return String((e && (e.message || e)) || 'unknown').slice(0, 160); }
+/* 每个同步周期都会调一次 UI 刷新，写同名文本会白白触发 DOM 变更 → 只在真变了才写。 */
+function setText(el, s) {
+  const v = String(s == null ? '' : s);
+  if (el && el.textContent !== v) el.textContent = v;
+}
+
+/* 计时探针：只把时间点报给宿主（GET /dsh-sp/marks 读回），不参与任何界面逻辑。 */
+let markSeq = 0;
+function mark(name) {
+  try {
+    if (typeof fetch !== 'function') return;
+    const t = (typeof performance !== 'undefined' && performance.now) ? Math.round(performance.now()) : -1;
+    const qs = '?n=' + encodeURIComponent(String(name)) + '&t=' + t + '&s=' + (++markSeq) + '&at=' + Date.now();
+    fetch('/dsh-sp/mark' + qs, { cache: 'no-store' }).catch(function () { });
+  } catch (e) {  }
+}
+
+/* 整文件读取：新版走 workspaceFiles.readBytes（返回 Uint8Array），旧版 readAll 另留兜底。
+   按类型标签判断，不靠 instanceof —— 跨 realm（iframe/沙箱）时 instanceof 会判失败。 */
+const TYPED_TAG_RE = /^\[object (Uint8Clamped|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array\]$/;
+function bytesOf(data) {
+  if (data == null) return null;
+  if (typeof data === 'string') {
+    try { return Uint8Array.from(atob(data), (c) => c.charCodeAt(0)); } catch (e) { return null; }
+  }
+  if (typeof data !== 'object') return null;
+  const tag = Object.prototype.toString.call(data);
+  if (tag === '[object Uint8Array]') return data;
+  if (tag === '[object ArrayBuffer]') { try { return new Uint8Array(data); } catch (e) { return null; } }
+  if (tag === '[object DataView]' || TYPED_TAG_RE.test(tag)) {
+    try { return new Uint8Array(data.buffer, data.byteOffset, data.byteLength); } catch (e) { return null; }
+  }
+  if (Array.isArray(data)) { try { return Uint8Array.from(data); } catch (e) { return null; } }
+  return null;
+}
+
+async function readWholeBytes(file, signal) {
+  const wf = ENV.remote && ENV.remote.workspaceFiles;
+  if (!wf) throw new Error('连接未就绪，稍后再试');
+  if (typeof wf.readBytes === 'function') {
+    const args = signal ? [file.sessionId, file.path, {}, signal] : [file.sessionId, file.path, {}];
+    return await wf.readBytes.apply(wf, args);
+  }
+  if (typeof wf.readAll === 'function') {
+    const args = signal ? [file.sessionId, file.path, signal] : [file.sessionId, file.path];
+    return await wf.readAll.apply(wf, args);
+  }
+  throw new Error('当前 DSH 版本缺少整文件读取接口（workspaceFiles.readBytes）');
+}
 
 async function readWholeText(address, signal) {
   const file = parseFileAddress(address);
   if (!file || file.scope !== 'session') throw new Error('无法定位所属会话（只支持会话工作区内的文件）');
-  const rem = ENV.remote;
-  if (!rem || !rem.workspaceFiles || typeof rem.workspaceFiles.readAll !== 'function') throw new Error('连接未就绪，稍后再试');
-  const args = signal ? [file.sessionId, file.path, signal] : [file.sessionId, file.path];
-  const res = await rem.workspaceFiles.readAll.apply(rem.workspaceFiles, args);
+  const res = await readWholeBytes(file, signal);
   if (!res || res.ok !== true || !res.value) {
     throw new Error('读取完整文件失败：' + msgOf(res && res.error ? res.error : res));
   }
   const v = res.value;
-  let bytes;
-  try { bytes = Uint8Array.from(atob(v.data), (c) => c.charCodeAt(0)); } catch (e) { throw new Error('文件内容解码失败'); }
+  const bytes = bytesOf(v.data);
+  if (!bytes) throw new Error('文件内容解码失败');
   let full;
   try { full = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { throw new Error('非 UTF-8 文本文件，编辑可能损坏内容，已阻止'); }
   const norm = toEditorText(full);
@@ -703,27 +850,31 @@ function walkTextRanges(container, query, caseSensitive) {
   return out;
 }
 
-function clearFfHighlights() {
+/* 文档预览与对比页可能各开一份搜索，高亮注册表分名，互不清场。 */
+const FIND_NS_DOC = ['dshsp-find', 'dshsp-find-cur'];
+const FIND_NS_REVIEW = ['dshsp-rvfind', 'dshsp-rvfind-cur'];
+
+function clearHighlights(names) {
   try {
     if (window.CSS && window.CSS.highlights) {
-      window.CSS.highlights.delete('dshsp-find');
-      window.CSS.highlights.delete('dshsp-find-cur');
+      window.CSS.highlights.delete(names[0]);
+      window.CSS.highlights.delete(names[1]);
     }
   } catch (e) { }
 }
-function paintFf() {
+function paintHighlights(st, names) {
   try {
     if (!window.CSS || !window.CSS.highlights || typeof window.Highlight !== 'function') return;
-    if (!ff.ranges.length) { clearFfHighlights(); return; }
-    window.CSS.highlights.set('dshsp-find', new window.Highlight(...ff.ranges));
-    const cur = ff.ranges[ff.idx];
-    if (cur) window.CSS.highlights.set('dshsp-find-cur', new window.Highlight(cur));
-    else window.CSS.highlights.delete('dshsp-find-cur');
+    if (!st.ranges.length) { clearHighlights(names); return; }
+    window.CSS.highlights.set(names[0], new window.Highlight(...st.ranges));
+    const cur = st.ranges[st.idx];
+    if (cur) window.CSS.highlights.set(names[1], new window.Highlight(cur));
+    else window.CSS.highlights.delete(names[1]);
   } catch (e) { }
 }
-function revealFf() {
+function revealHighlight(st) {
   try {
-    const r = ff.ranges[ff.idx];
+    const r = st.ranges[st.idx];
     if (!r) return;
     const host = r.startContainer && r.startContainer.parentElement;
     if (host && typeof host.scrollIntoView === 'function') host.scrollIntoView({ block: 'center', inline: 'nearest' });
@@ -733,10 +884,12 @@ function revealFf() {
 function enhanceStart() {
   if (enh) return;
   if (typeof document === 'undefined' || !document.body) { if (typeof setTimeout === 'function') setTimeout(enhanceStart, 500); return; }
-  try { const legacy = document.querySelector('style[data-plugin-css="dsh-sidebar-plus-official"]'); if (legacy) legacy.remove(); } catch (e) { }
+  try { const legacy = document.querySelector('style[data-plugin-css="dsh-sidebar-plus-official"]'); if (legacy) legacy.remove(); } catch (e) { } // 旧版本注入过这个 style，清掉防残留
 
   let attachedPane = null;
   let msgTimer = null;
+  let paneMarked = false;
+  let toolbarMarked = false;
 
   function mkBtn(txt, title, fn) {
     const b = document.createElement('button');
@@ -748,11 +901,42 @@ function enhanceStart() {
     return b;
   }
 
+  function mkJump(getTa, flash) {
+    const box = document.createElement('span');
+    box.className = 'dshsp-jumpbox';
+    box.style.display = 'none';
+    const lab = document.createElement('span');
+    lab.className = 'dshsp-jlabel';
+    lab.textContent = '行';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'dshsp-jump';
+    inp.placeholder = '跳行';
+    inp.title = '输入行号后回车：光标跳到那一行';
+    const go = function () {
+      const ta = getTa();
+      const n = parseInt(inp.value, 10);
+      if (!ta || !Number.isFinite(n) || n < 1) return;
+      const at = caretToLine(ta, n);
+      flash('已跳到第 ' + at + ' 行');
+      inp.value = '';
+    };
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); go(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); inp.blur(); }
+    });
+    box.appendChild(lab);
+    box.appendChild(inp);
+    box.appendChild(mkBtn('跳', '跳到该行', go));
+    return { box: box, input: inp };
+  }
+
   function paneNow() {
     const pane = document.querySelector('[data-document-preview]');
     if (!pane || !pane.isConnected || pane.getAttribute('data-document-preview') === SELF_ID) return null;
     const body = pane.querySelector('[data-textpreview-body]');
     if (!body) return null;
+    if (!paneMarked) { paneMarked = true; mark('official-pane-seen'); }
     return { pane: pane, body: body };
   }
 
@@ -800,13 +984,13 @@ function enhanceStart() {
     const cur = paneNow();
     ff.ranges = (cur && ff.q) ? walkTextRanges(cur.body, ff.q, ff.cs) : [];
     if (ff.idx >= ff.ranges.length) ff.idx = 0;
-    paintFf(); revealFf(); renderFf();
+    paintHighlights(ff, FIND_NS_DOC); revealHighlight(ff); renderFf();
   }
   function stepFf(d) {
     if (!ff.ranges.length) { runFf(); return; }
     const n = ff.ranges.length;
     ff.idx = ((ff.idx + d) % n + n) % n;
-    paintFf(); revealFf(); renderFf();
+    paintHighlights(ff, FIND_NS_DOC); revealHighlight(ff); renderFf();
   }
   function openFind() {
     ff.open = true;
@@ -816,7 +1000,7 @@ function enhanceStart() {
   }
   function closeFind() {
     ff.open = false;
-    clearFfHighlights();
+    clearHighlights(FIND_NS_DOC);
     renderFf();
     sync();
   }
@@ -854,7 +1038,7 @@ function enhanceStart() {
   }
   function bumpZoom(dir) { setOfficialZoom(officialZoom + dir / basePx()); }
   function updateZoomUi() {
-    zoomBtn.textContent = Math.max(10, Math.round(basePx() * officialZoom)) + 'px';
+    setText(zoomBtn, Math.max(10, Math.round(basePx() * officialZoom)) + 'px');
     if (ip.active) ipSyncUi();
     if (!attachedPane) return;
     if (officialZoom === 1) attachedPane.style.removeProperty('--dshsp-zoom');
@@ -893,7 +1077,8 @@ function enhanceStart() {
     reloadBtn.style.display = (on && ip.conflict) ? '' : 'none';
     editBtn.style.display = on ? 'none' : '';
     findBtn.style.display = on ? 'none' : '';
-    saveBtn.textContent = '保存' + (ip.dirty ? ' *' : '');
+    ipJump.box.style.display = on ? '' : 'none';
+    setText(saveBtn, '保存' + (ip.dirty ? ' *' : ''));
     if (on && ip.ta) {
       const px = Math.max(10, Math.round(basePx() * officialZoom));
       ip.ta.style.fontSize = px + 'px';
@@ -925,7 +1110,7 @@ function enhanceStart() {
       ta.addEventListener('scroll', () => { if (ip.gut) ip.gut.scrollTop = ip.ta.scrollTop; });
       ipRenderGutter();
       ipSyncUi();
-      try { ta.focus(); } catch (e) { }
+      caretToLine(ta, 1);
       barFlash('编辑中：Ctrl+S 保存，Esc 退出');
     } catch (e) {
       barFlash(msgOf(e));
@@ -966,6 +1151,8 @@ function enhanceStart() {
         return;
       }
       barFlash('保存失败：' + msgOf(r && r.error ? r.error : r));
+    } catch (e) {
+      barFlash('保存失败：' + msgOf(e));
     } finally {
       ip.busy = false;
     }
@@ -1005,6 +1192,7 @@ function enhanceStart() {
   const saveBtn = mkBtn('保存', '保存（Ctrl+S）', () => doSave(false));
   saveBtn.className = 'dshsp-btn dshsp-btn-primary';
   const exitBtn = mkBtn('退出编辑', '退出编辑（Esc）', () => exitInplace());
+  const ipJump = mkJump(() => (ip.active ? ip.ta : null), barFlash);
   const forceBtn = mkBtn('强制保存', '磁盘上这份已变，强制覆盖', () => doSave(true));
   forceBtn.className = 'dshsp-btn dshsp-conflict';
   const reloadBtn = mkBtn('重载最新', '丢掉本地改动，重读磁盘最新', () => reloadLatest());
@@ -1012,6 +1200,7 @@ function enhanceStart() {
   bar.appendChild(editBtn);
   bar.appendChild(saveBtn);
   bar.appendChild(exitBtn);
+  bar.appendChild(ipJump.box);
   bar.appendChild(findBtn);
   bar.appendChild(aMinus);
   bar.appendChild(zoomBtn);
@@ -1038,25 +1227,522 @@ function enhanceStart() {
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
   });
 
+  /* ---------------- 官方对比视图（changes-review）----------------
+     同一份工具条再加一处落点：官方「本轮改了哪些文件」的左右对比页。
+     搜索走 CSS Highlight，一次遍历两侧文本；字号给对比体内容区设 zoom，两侧一起变；
+     编辑只落在右侧（＝磁盘上的当前文件），左侧是这一轮的历史快照，永远只读。 */
+  const RV_ZOOM_KEY = 'dsh-sidebar-plus.reviewZoom';
+  let rvZoom = 1;
+  try {
+    const z = parseFloat(window.localStorage.getItem(RV_ZOOM_KEY));
+    if (z >= 0.5 && z <= 2.5) rvZoom = z;
+  } catch (e) { }
+
+  const RV_SIDE_KEY = 'dsh-sidebar-plus.reviewFindSide';
+  const rvff = { open: false, q: '', cs: false, side: 'both', ranges: [], idx: 0 };
+  try {
+    const s = window.localStorage.getItem(RV_SIDE_KEY);
+    if (s === 'left' || s === 'right') rvff.side = s;
+  } catch (e) { }
+  const rved = { active: false, dirty: false, conflict: false, busy: false, abs: '', mtimeMs: 0, crlf: false, bom: false, init: '', ta: null, gut: null, box: null, hide: null, wide: false };
+  let rvRoot = null;
+  let rvKey = '';
+  let rvAnchorLine = 0;
+
+  const rgroup = document.createElement('div');
+  rgroup.className = 'dshsp-ogroup';
+  rgroup.setAttribute('data-dshsp-review', '1');
+  const rbar = document.createElement('div');
+  rbar.className = 'dshsp-bar';
+  const rfindRow = document.createElement('div');
+  rfindRow.className = 'dshsp-find';
+  rgroup.appendChild(rbar);
+  rgroup.appendChild(rfindRow);
+  const rstatus = document.createElement('span');
+  rstatus.className = 'dshsp-status';
+  let rvMsgTimer = null;
+  function rvFlash(text) {
+    rstatus.textContent = String(text || '');
+    if (rvMsgTimer) clearTimeout(rvMsgTimer);
+    rvMsgTimer = setTimeout(() => { rstatus.textContent = ''; }, 4000);
+  }
+
+  /* 只在「可见且已画出对比体」的对比页上干活；一个页面上可能同时开着多个面板。 */
+  function rvBodyNow() {
+    if (typeof document === 'undefined') return null;
+    const list = document.querySelectorAll('[data-changes-review]');
+    for (const el of list) {
+      if (!el.isConnected || isHiddenEl(el)) continue;
+      const body = el.querySelector('[data-review-view]');
+      if (body) return { root: el, body: body };
+    }
+    return null;
+  }
+
+  function rvSource() {
+    const cur = rvBodyNow();
+    if (!cur) return null;
+    const scope = cur.root.closest('[data-sidebar-right-session]');
+    const fileEl = cur.root.querySelector('[data-review-file]');
+    const sessionId = scope ? String(scope.getAttribute('data-sidebar-right-session') || '') : '';
+    const path = fileEl ? String(fileEl.getAttribute('data-review-file') || '') : '';
+    return {
+      root: cur.root,
+      body: cur.body,
+      left: cur.body.querySelector('[data-diff-side="left"]'),
+      right: cur.body.querySelector('[data-diff-side="right"]'),
+      sessionId: sessionId,
+      path: path,
+      address: (sessionId && path) ? sessionFileAddress(sessionId, path) : '',
+    };
+  }
+
+  /* 搜索范围：两侧 / 只左 / 只右。官方没画两栏时（单栏、单边对比）自动退回两侧。 */
+  function rvScope() {
+    const caps = rvSource();
+    if (!caps) return null;
+    const sides = !!(caps.left && caps.right);
+    const side = (rvff.side !== 'both' && caps[rvff.side]) ? rvff.side : 'both';
+    return { caps: caps, side: side, sides: sides, el: side === 'both' ? caps.body : caps[side] };
+  }
+
+  const rEditBtn = mkBtn('编辑右侧', '', () => rvEnterEdit());
+  rEditBtn.className = 'dshsp-btn dshsp-btn-primary';
+  const rSaveBtn = mkBtn('保存', '保存（Ctrl+S）', () => rvSave(false));
+  rSaveBtn.className = 'dshsp-btn dshsp-btn-primary';
+  const rExitBtn = mkBtn('退出编辑', '退出编辑（Esc）', () => rvExitEdit());
+  const rvJump = mkJump(() => (rved.active ? rved.ta : null), rvFlash);
+  const rFindBtn = mkBtn('搜索', '', () => rvOpenFind());
+  const rAMinus = mkBtn('A−', '', () => rvBump(-1));
+  const rZoomBtn = mkBtn('—', '', () => rvSetZoom(1));
+  rZoomBtn.style.minWidth = '42px';
+  rZoomBtn.style.justifyContent = 'center';
+  const rAPlus = mkBtn('A+', '', () => rvBump(1));
+  const rForceBtn = mkBtn('强制保存', '磁盘上这份已变，强制覆盖', () => rvSave(true));
+  rForceBtn.className = 'dshsp-btn dshsp-conflict';
+  const rReloadBtn = mkBtn('重载最新', '丢掉本地改动，重读磁盘最新', () => rvReload());
+  rReloadBtn.className = 'dshsp-btn dshsp-conflict';
+  const rvLabel = function (key, fallback) {
+    const v = zh[key] != null ? zh[key] : en[key];
+    return typeof v === 'string' && v ? v : fallback;
+  };
+  function rvTitles() {
+    rEditBtn.title = rvLabel('rv.edit.tip', '编辑右侧（当前文件），左侧是只读的历史快照；会先切成左右分栏、不换行');
+    rFindBtn.title = rvLabel('rv.find.tip', '搜索（左右两侧一起搜）');
+    rAMinus.title = rvLabel('rv.zoom.in', '缩小字号（左右两侧一起变）');
+    rAPlus.title = rvLabel('rv.zoom.out', '放大字号（左右两侧一起变）');
+    rZoomBtn.title = rvLabel('rv.zoom.reset', '点击恢复对比视图的官方字号（左右两侧一起变）');
+  }
+  rbar.appendChild(rEditBtn);
+  rbar.appendChild(rSaveBtn);
+  rbar.appendChild(rExitBtn);
+  rbar.appendChild(rvJump.box);
+  rbar.appendChild(rFindBtn);
+  rbar.appendChild(rAMinus);
+  rbar.appendChild(rZoomBtn);
+  rbar.appendChild(rAPlus);
+  rbar.appendChild(rForceBtn);
+  rbar.appendChild(rReloadBtn);
+  rbar.appendChild(rstatus);
+  rvTitles();
+  rSaveBtn.style.display = 'none';
+  rExitBtn.style.display = 'none';
+  rForceBtn.style.display = 'none';
+  rReloadBtn.style.display = 'none';
+
+  const rInput = document.createElement('input');
+  rInput.type = 'text';
+  rInput.placeholder = rvLabel('rv.find.holder', '搜索（左右两侧一起搜；↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）');
+  const rCount = document.createElement('span');
+  rCount.className = 'dshsp-count';
+
+  const rvSideBtns = {};
+  function rvSideBtn(side, label, title) {
+    const b = mkBtn(label, title, function () {
+      rvff.side = side;
+      rvff.idx = 0;
+      try { window.localStorage.setItem(RV_SIDE_KEY, side); } catch (e) { }
+      rvRunFind();
+    });
+    rvSideBtns[side] = b;
+    return b;
+  }
+  function rvSyncSideUi() {
+    const sc = rvScope();
+    if (!sc) return;
+    for (const side of ['both', 'left', 'right']) {
+      const b = rvSideBtns[side];
+      if (!b) continue;
+      b.disabled = !sc.sides && side !== 'both';
+      b.className = (sc.side === side) ? 'dshsp-btn dshsp-btn-on' : 'dshsp-btn';
+    }
+  }
+
+  function rvRenderFind() {
+    rvSyncSideUi();
+    rCount.textContent = rvff.q ? (rvff.ranges.length ? (rvff.idx + 1) + ' / ' + rvff.ranges.length : rvLabel('finding.no', '无匹配')) : '';
+  }
+  function rvRunFind() {
+    const sc = rvScope();
+    rvff.ranges = (sc && rvff.q) ? walkTextRanges(sc.el, rvff.q, rvff.cs) : [];
+    if (rvff.idx >= rvff.ranges.length) rvff.idx = 0;
+    paintHighlights(rvff, FIND_NS_REVIEW); revealHighlight(rvff); rvRenderFind();
+  }
+  function rvStepFind(d) {
+    if (!rvff.ranges.length) { rvRunFind(); return; }
+    const n = rvff.ranges.length;
+    rvff.idx = ((rvff.idx + d) % n + n) % n;
+    paintHighlights(rvff, FIND_NS_REVIEW); revealHighlight(rvff); rvRenderFind();
+  }
+  function rvOpenFind() {
+    rvff.open = true;
+    syncReview();
+    try { rInput.focus(); rInput.select(); } catch (e) { }
+    if (rvff.q) rvRunFind(); else rvRenderFind();
+  }
+  function rvCloseFind() {
+    rvff.open = false;
+    clearHighlights(FIND_NS_REVIEW);
+    rvRenderFind();
+    syncReview();
+  }
+  rfindRow.appendChild(rInput);
+  rfindRow.appendChild(rCount);
+  rfindRow.appendChild(rvSideBtn('both', '两侧', '左右两侧一起搜'));
+  rfindRow.appendChild(rvSideBtn('left', '左', '只搜左侧（本轮开始的历史快照），上下箭头只在左侧走'));
+  rfindRow.appendChild(rvSideBtn('right', '右', '只搜右侧（当前文件），上下箭头只在右侧走'));
+  rfindRow.appendChild(mkBtn('Aa', '区分大小写', function () { rvff.cs = !rvff.cs; rvff.idx = 0; rvRunFind(); }));
+  rfindRow.appendChild(mkBtn('↑', '上一个（↑）', () => rvStepFind(-1)));
+  rfindRow.appendChild(mkBtn('↓', '下一个（↓）', () => rvStepFind(1)));
+  rfindRow.appendChild(mkBtn('✕', '关闭（Esc）', rvCloseFind));
+  rInput.addEventListener('input', function () { rvff.q = rInput.value; rvff.idx = 0; rvRunFind(); });
+  rInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); rvStepFind(e.shiftKey ? -1 : 1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); rvStepFind(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); rvStepFind(-1); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); rvCloseFind(); }
+  });
+
+  /* 对比体当前字号：取右栏首行 computed font-size，取不到退回 13px；同一面板内缓存。 */
+  let rvBaseEl = null;
+  let rvBase = 13;
+  function rvBasePx() {
+    const cur = rvBodyNow();
+    if (!cur) return 13;
+    if (rvBaseEl === cur.body) return rvBase;
+    try {
+      const el = cur.body.querySelector('[data-diff-line]') || cur.body;
+      const v = parseFloat(getComputedStyle(el).fontSize);
+      rvBase = Number.isFinite(v) && v > 0 ? v : 13;
+    } catch (e) { rvBase = 13; }
+    rvBaseEl = cur.body;
+    return rvBase;
+  }
+  function rvApplyZoom() {
+    if (!rvRoot) return;
+    try {
+      if (rvZoom === 1) {
+        rvRoot.removeAttribute('data-dshsp-rv');
+        rvRoot.style.removeProperty('--dshsp-rvz');
+      } else {
+        rvRoot.setAttribute('data-dshsp-rv', '1');
+        if (rvRoot.style.getPropertyValue('--dshsp-rvz') !== String(rvZoom)) rvRoot.style.setProperty('--dshsp-rvz', String(rvZoom));
+      }
+    } catch (e) { }
+    if (rved.active && rved.wide && rved.box) {
+      try { rved.box.style.zoom = rvZoom === 1 ? '' : String(rvZoom); } catch (e) { }
+    }
+  }
+  function rvUpdateZoomUi() {
+    setText(rZoomBtn, Math.max(8, Math.round(rvBasePx() * rvZoom)) + 'px');
+    rvApplyZoom();
+  }
+  function rvBump(dir) { rvSetZoom(rvZoom + dir / rvBasePx()); }
+  function rvSetZoom(v) {
+    const n = Math.min(2.5, Math.max(0.5, Math.round(v * 100) / 100));
+    if (n === rvZoom) { rvUpdateZoomUi(); return; }
+    rvZoom = n;
+    try { window.localStorage.setItem(RV_ZOOM_KEY, String(n)); } catch (e) { }
+    rvUpdateZoomUi();
+  }
+
+  function rvRenderGutter() {
+    if (!rved.gut || !rved.ta) return;
+    const n = rved.ta.value.split('\n').length;
+    const out = [];
+    for (let i = 1; i <= n; i++) out.push('<div>' + i + '</div>');
+    rved.gut.innerHTML = out.join('');
+  }
+  function rvSyncUi() {
+    const on = rved.active;
+    rSaveBtn.style.display = on ? '' : 'none';
+    rExitBtn.style.display = on ? '' : 'none';
+    rForceBtn.style.display = (on && rved.conflict) ? '' : 'none';
+    rReloadBtn.style.display = (on && rved.conflict) ? '' : 'none';
+    rEditBtn.style.display = on ? 'none' : '';
+    rFindBtn.style.display = on ? 'none' : '';
+    rvJump.box.style.display = on ? '' : 'none';
+    setText(rSaveBtn, '保存' + (rved.dirty ? ' *' : ''));
+    rfindRow.style.display = (rvff.open && !on) ? 'flex' : 'none';
+  }
+
+  /* 官方的左右分栏只在「分栏 + 不换行」时成立；进编辑先替它切到那个形态。 */
+  async function rvAutoSplit(root) {
+    try {
+      const splitBtn = root.querySelector('[data-review-tool="split"]');
+      if (splitBtn && splitBtn.getAttribute('aria-pressed') !== 'true') splitBtn.click();
+      const wrapBtn = root.querySelector('[data-review-tool="wrap"]');
+      if (wrapBtn && wrapBtn.getAttribute('aria-pressed') === 'true') wrapBtn.click();
+    } catch (e) { }
+  }
+  function rvWaitRight(ms) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const tick = () => {
+        const caps = rvSource();
+        if (caps && caps.right) return resolve(caps.right);
+        if (Date.now() - t0 >= ms) return resolve(null);
+        setTimeout(tick, 60);
+      };
+      tick();
+    });
+  }
+
+  /* 对比页里点一行 → 记住它（映射到右侧/新版本的行号），编辑就从这行开始。 */
+  function rvPickRow(row) {
+    const caps = rvSource();
+    if (!caps || !caps.body.contains(row)) return;
+    let target = row;
+    if (caps.left && caps.right && caps.left.contains(row)) {
+      const rows = Array.prototype.slice.call(caps.left.querySelectorAll('[data-diff-line]'));
+      const at = rows.indexOf(row);
+      const peers = Array.prototype.slice.call(caps.right.querySelectorAll('[data-diff-line]'));
+      if (at >= 0 && peers[at]) target = peers[at];
+    }
+    const n = rowLineNo(target);
+    if (n < 1) return;
+    rvAnchorLine = n;
+    try {
+      const marked = caps.root.querySelectorAll('.dshsp-anchor');
+      for (const el of marked) el.classList.remove('dshsp-anchor');
+      target.classList.add('dshsp-anchor');
+    } catch (e) { }
+    rvFlash('已选定第 ' + n + ' 行：点「编辑右侧」就从这一行开始');
+  }
+
+  /* 没点过行时的兜底：取右栏可视区中间那一行的行号。 */
+  function rvCenterLine() {
+    const caps = rvSource();
+    if (!caps || !caps.right || typeof caps.right.getBoundingClientRect !== 'function') return 0;
+    const box = caps.right.getBoundingClientRect();
+    if (!box || !box.height) return 0;
+    const mid = box.top + box.height / 2;
+    let best = 0;
+    let bestD = Infinity;
+    for (const row of caps.right.querySelectorAll('[data-diff-line]')) {
+      const r = row.getBoundingClientRect();
+      if (!r.height) continue;
+      if (r.bottom < box.top || r.top > box.bottom) continue;
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bestD) { bestD = d; best = rowLineNo(row); }
+    }
+    return best;
+  }
+
+  function rvBuildEditor(caps, r) {
+    const wide = !caps.right;
+    const box = document.createElement('div');
+    box.className = wide ? 'dshsp-rved' : (caps.right.className + ' dshsp-rved');
+    box.setAttribute('data-dshsp-rvedit', '1');
+    box.style.setProperty('--dshsp-fs', Math.round(rvBasePx()) + 'px');
+    const row = document.createElement('div');
+    row.className = 'dshsp-editrow';
+    const gut = document.createElement('div');
+    gut.className = 'dshsp-egut';
+    const ta = document.createElement('textarea');
+    ta.className = 'dshsp-ta';
+    ta.spellcheck = false;
+    ta.setAttribute('wrap', 'off');
+    ta.value = r.text;
+    row.appendChild(gut);
+    row.appendChild(ta);
+    box.appendChild(row);
+    if (wide) {
+      caps.body.parentElement.insertBefore(box, caps.body);
+      caps.body.style.display = 'none';
+    } else {
+      caps.right.parentElement.appendChild(box);
+      caps.right.style.display = 'none';
+    }
+    Object.assign(rved, {
+      active: true, dirty: false, conflict: false, abs: r.abs, mtimeMs: r.mtimeMs,
+      crlf: r.crlf, bom: r.bom, init: r.text, ta: ta, gut: gut, box: box,
+      hide: wide ? caps.body : caps.right, wide: wide,
+    });
+    ta.addEventListener('input', () => { rved.dirty = ta.value !== rved.init; rvRenderGutter(); rvSyncUi(); });
+    ta.addEventListener('scroll', () => { if (rved.gut) rved.gut.scrollTop = ta.scrollTop; });
+    rvApplyZoom();
+    rvRenderGutter();
+    rvSyncUi();
+    return ta;
+  }
+
+  async function rvEnterEdit() {
+    if (rved.active || rved.busy) return;
+    let caps = rvSource();
+    if (!caps) return;
+    if (!caps.address) { rvFlash('无法定位文件（缺少会话或路径）'); return; }
+    rved.busy = true;
+    try {
+      if (!caps.right) {
+        await rvAutoSplit(caps.root);
+        await rvWaitRight(900);
+        caps = rvSource();
+        if (!caps) return;
+      }
+      const r = await readWholeText(caps.address);
+      const ta = rvBuildEditor(caps, r);
+      const want = rvAnchorLine || rvCenterLine() || 1;
+      const at = caretToLine(ta, want);
+      if (at > 1 && want > 1) rvFlash('已定位到第 ' + at + ' 行（左侧是历史对照，只读）；Ctrl+S 保存，Esc 退出');
+      else rvFlash(rvLabel('rv.editing', '编辑中：只改右侧的当前文件，左侧只读；Ctrl+S 保存，Esc 退出'));
+    } catch (e) {
+      rvFlash(msgOf(e));
+    } finally {
+      rved.busy = false;
+    }
+  }
+  function rvExitEdit(force) {
+    if (!rved.active) return;
+    if (!force && rved.dirty && typeof window !== 'undefined' && window.confirm) {
+      if (!window.confirm('有未保存的修改，确定放弃并退出编辑吗？')) return;
+    }
+    try { if (rved.box && rved.box.parentNode) rved.box.remove(); } catch (e) { }
+    try { if (rved.hide) rved.hide.style.display = ''; } catch (e) { }
+    Object.assign(rved, { active: false, dirty: false, conflict: false, ta: null, gut: null, box: null, hide: null, wide: false });
+    rvSyncUi();
+  }
+  async function rvSave(force) {
+    if (!rved.active || rved.busy) return;
+    rved.busy = true;
+    try {
+      const out = fromEditorText(rved.ta.value, { crlf: rved.crlf, bom: rved.bom });
+      const r = await postSave(saveRequestBody(rved.abs, out, rved.mtimeMs, force));
+      if (r && r.ok) {
+        rved.mtimeMs = r.mtimeMs;
+        rved.init = rved.ta.value;
+        rved.dirty = false;
+        rved.conflict = false;
+        rvSyncUi();
+        rvFlash('已保存 ' + humanBytes(r.bytes) + (r.backup ? '（旧版已自动备份）' : '') + '；' + rvLabel('rv.saved', '左侧对比是历史快照，不会随之更新'));
+        return;
+      }
+      if (r && r.error === 'changed') {
+        rved.conflict = true;
+        rvSyncUi();
+        rvFlash('文件在别处被改过，请选择：');
+        return;
+      }
+      rvFlash('保存失败：' + msgOf(r && r.error ? r.error : r));
+    } catch (e) {
+      rvFlash('保存失败：' + msgOf(e));
+    } finally {
+      rved.busy = false;
+    }
+  }
+  async function rvReload() {
+    if (!rved.active || rved.busy) return;
+    rved.busy = true;
+    try {
+      const caps = rvSource();
+      if (!caps || !caps.address) throw new Error('无法定位文件');
+      const r = await readWholeText(caps.address);
+      const keep = lineOfCaret(rved.ta);
+      rved.init = r.text;
+      rved.ta.value = r.text;
+      rved.mtimeMs = r.mtimeMs;
+      rved.crlf = r.crlf;
+      rved.bom = r.bom;
+      rved.dirty = false;
+      rved.conflict = false;
+      rvRenderGutter();
+      rvSyncUi();
+      caretToLine(rved.ta, keep);
+      rvFlash('已重载磁盘最新内容');
+    } catch (e) {
+      rvFlash(msgOf(e));
+    } finally {
+      rved.busy = false;
+    }
+  }
+
+  function syncReview() {
+    const cur = rvBodyNow();
+    if (!cur) {
+      if (rved.active) rvExitEdit(true);
+      if (rvRoot) {
+        try { rvRoot.removeAttribute('data-dshsp-rv'); rvRoot.style.removeProperty('--dshsp-rvz'); } catch (e) { }
+      }
+      rvRoot = null;
+      rvKey = '';
+      if (rgroup.parentNode) { try { rgroup.remove(); } catch (e) { } }
+      if (rvff.open) { rvff.open = false; clearHighlights(FIND_NS_REVIEW); rvRenderFind(); }
+      return;
+    }
+    const scope = cur.root.closest('[data-sidebar-right-session]');
+    const fileEl = cur.root.querySelector('[data-review-file]');
+    const key = String(scope ? scope.getAttribute('data-sidebar-right-session') || '' : '') + '|' + String(fileEl ? fileEl.getAttribute('data-review-file') || '' : '');
+    if (rvKey !== key) {
+      rvKey = key;
+      if (rved.active) rvExitEdit(true);
+      rvAnchorLine = 0;
+      try {
+        const marked = cur.root.querySelectorAll('.dshsp-anchor');
+        for (const el of marked) el.classList.remove('dshsp-anchor');
+      } catch (e) { }
+      clearHighlights(FIND_NS_REVIEW);
+      rvff.ranges = [];
+      rvff.idx = 0;
+      if (rvff.q) rvRunFind(); else rvRenderFind();
+    }
+    if (rvRoot !== cur.root) {
+      if (rved.active) rvExitEdit(true);
+      rvRoot = cur.root;
+    }
+    const anchor = cur.root.firstElementChild;
+    if (rgroup.parentNode !== cur.root) {
+      try { cur.root.insertBefore(rgroup, anchor ? anchor.nextSibling : cur.root.firstChild); } catch (e) { return; }
+    }
+    rvApplyZoom();
+    rvSyncUi();
+    rvUpdateZoomUi();
+  }
+
   function sync() {
+    syncDoc();
+    syncReview();
+  }
+
+  function syncDoc() {
     const cur = paneNow();
     if (!cur) {
       if (ip.active) exitInplace(true);
       if (attachedPane) { try { attachedPane.style.removeProperty('--dshsp-zoom'); attachedPane.removeAttribute('data-dshsp-lineno'); } catch (e) { } }
       attachedPane = null;
       if (group.parentNode) { try { group.remove(); } catch (e) { } }
-      if (ff.open) { ff.open = false; clearFfHighlights(); renderFf(); }
+      if (ff.open) { ff.open = false; clearHighlights(FIND_NS_DOC); renderFf(); }
       return;
     }
     if (ip.active && (ip.pane !== cur.pane || ip.body !== cur.body)) exitInplace(true);
     if (!ip.active && (group.parentNode !== cur.pane || group.nextElementSibling !== cur.body)) {
       try { cur.pane.insertBefore(group, cur.body); } catch (e) { return; }
+      if (!toolbarMarked) { toolbarMarked = true; mark('toolbar-inserted'); }
     }
     attachedPane = cur.pane;
     findRow.style.display = (ff.open && !ip.active) ? 'flex' : 'none';
     const isPlain = /\/text$/.test(String(cur.pane.getAttribute('data-document-preview') || ''));
     linenoBtn.style.display = (isPlain && !ip.active) ? '' : 'none';
-    linenoBtn.textContent = '行号';
+    setText(linenoBtn, '行号');
     linenoBtn.className = plainLineNo ? 'dshsp-btn dshsp-btn-on' : 'dshsp-btn';
     try {
       if (isPlain && plainLineNo) {
@@ -1076,8 +1762,26 @@ function enhanceStart() {
     ipSyncUi();
     updateZoomUi();
   }
+  /* 对比页与文档预览可能同时开着；键盘先给「焦点所在 / 唯一可见」的那一个。 */
+  function onKeyReview(e) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (rved.active) {
+      if (ctrl && !e.altKey && (e.key === 's' || e.key === 'S')) { e.preventDefault(); e.stopPropagation(); rvSave(false); return; }
+      if (e.key === 'Escape') { e.preventDefault(); rvExitEdit(); return; }
+      return;
+    }
+    if (ctrl && !e.altKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); e.stopPropagation(); rvOpenFind(); return; }
+    if (e.key === 'F3' && rvff.open) { e.preventDefault(); rvStepFind(e.shiftKey ? -1 : 1); return; }
+    if (e.key === 'Escape' && rvff.open) { e.preventDefault(); rvCloseFind(); }
+  }
   const onKey = function (e) {
     try {
+      const rv = rvBodyNow();
+      if (rv) {
+        const doc = paneNow();
+        const focusInRv = typeof document !== 'undefined' && document.activeElement && rv.root.contains(document.activeElement);
+        if (!doc || isHiddenEl(doc.pane) || focusInRv) { onKeyReview(e); return; }
+      }
       if (!paneNow()) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ip.active) {
@@ -1093,6 +1797,12 @@ function enhanceStart() {
   const onWheel = function (e) {
     try {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const rv = rvBodyNow();
+      if (rv && rv.root.contains(e.target)) {
+        e.preventDefault(); e.stopPropagation();
+        rvBump(e.deltaY < 0 ? 1 : -1);
+        return;
+      }
       const cur = paneNow();
       if (!cur || !cur.pane.contains(e.target)) return;
       e.preventDefault(); e.stopPropagation();
@@ -1100,22 +1810,67 @@ function enhanceStart() {
     } catch (err) { }
   };
   window.addEventListener('keydown', onKey, true);
+  /* 在对比页点任意一行：把那一行记成编辑起点（左栏的点击会映射到右栏同一行）。 */
+  const onPick = function (e) {
+    try {
+      if (rved.active) return;
+      const t = e.target;
+      const row = t && t.closest ? t.closest('[data-diff-line]') : null;
+      if (!row) return;
+      const caps = rvSource();
+      if (!caps || !caps.body.contains(row)) return;
+      rvPickRow(row);
+    } catch (err) { }
+  };
   if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('click', onPick, true);
     document.addEventListener('wheel', onWheel, { passive: false });
   }
-  const timer = setInterval(sync, 400);
+
+  /* 挂载时机：MutationObserver 盯着 DOM，页面一变就同步（16 毫秒节流）；
+     另留慢速兜底轮询，防观察者失效导致工具条不出现。 */
+  let stopped = false;
+  let syncScheduled = false;
+  let lastSyncAt = 0;
+  const SYNC_MIN_GAP_MS = 16;   // 一帧的节流：连打 DOM 变化也不会把同步压到成灾
+  function scheduleSync() {
+    if (stopped || syncScheduled) return;
+    syncScheduled = true;
+    const gap = SYNC_MIN_GAP_MS - (Date.now() - lastSyncAt);
+    setTimeout(function () {
+      syncScheduled = false;
+      if (stopped) return;
+      lastSyncAt = Date.now();
+      try { sync(); } catch (e) {  }
+    }, gap > 0 ? gap : 0);
+  }
+  const canObserve = typeof MutationObserver === 'function' && typeof document !== 'undefined' && !!document.documentElement;
+  const observer = canObserve ? new MutationObserver(scheduleSync) : null;
+  if (observer) { try { observer.observe(document.documentElement, { childList: true, subtree: true }); } catch (e) { } }
+  lastSyncAt = Date.now();
   sync();
+  const timer = setInterval(sync, observer ? 1200 : 400);
   enh = {
-    sync: sync,
     stop() {
+      stopped = true;
+      if (observer) { try { observer.disconnect(); } catch (e) { } }
       clearInterval(timer);
       if (msgTimer) clearTimeout(msgTimer);
+      if (rvMsgTimer) clearTimeout(rvMsgTimer);
       if (zoomUi === updateZoomUi) zoomUi = null;
       window.removeEventListener('keydown', onKey, true);
+      try { document.removeEventListener('click', onPick, true); } catch (e) { }
       try { document.removeEventListener('wheel', onWheel); } catch (e) { }
-      clearFfHighlights();
+      clearHighlights(FIND_NS_DOC);
+      clearHighlights(FIND_NS_REVIEW);
       try { exitInplace(true); } catch (e) { }
+      try { rvExitEdit(true); } catch (e) { }
       try { group.remove(); } catch (e) { }
+      try { rgroup.remove(); } catch (e) { }
+      if (rvRoot) {
+        try { rvRoot.removeAttribute('data-dshsp-rv'); rvRoot.style.removeProperty('--dshsp-rvz'); } catch (e) { }
+      }
+      rvRoot = null;
       if (attachedPane) {
         try {
           attachedPane.style.removeProperty('--dshsp-zoom');
@@ -1129,6 +1884,7 @@ function enhanceStart() {
 }
 function enhanceStop() { if (enh) { try { enh.stop(); } catch (e) { } } }
 
+mark('business-ready');
 enhanceStart();
 
 return {
@@ -1149,6 +1905,7 @@ return {
   _test: {
     VERSION: VERSION,
     parseFileAddress: parseFileAddress,
+    sessionFileAddress: sessionFileAddress,
     splitLines: splitLines,
     computeMatches: computeMatches,
     matchesByLine: matchesByLine,
@@ -1162,5 +1919,8 @@ return {
     toEditorText: toEditorText,
     fromEditorText: fromEditorText,
     humanBytes: humanBytes,
+    bytesOf: bytesOf,
+    readWholeBytes: readWholeBytes,
+    readWholeText: readWholeText,
   },
 };

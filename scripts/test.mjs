@@ -38,7 +38,7 @@ ok(api._test.ID === 'dsh-sidebar-plus/source' && api._test.NS === 'dshSidebarPlu
 
 // ---------- 浏览器业务：通过加载器的 compileBus 真编译 hot-client.cjs ----------
 const bus = api._test.compileBus(read('hot-client.cjs'), { react: stubReact, remote: null })
-ok(typeof bus.version === 'string' && bus.version === '0.3.6', '业务版本号', bus.version)
+ok(typeof bus.version === 'string' && bus.version === '0.4.0', '业务版本号', bus.version)
 ok(typeof bus.Body === 'function' && bus.title === '源编辑' && Array.isArray(bus.extensions), '业务契约字段齐全')
 ok(bus.extensions.length === 2 && bus.extensions[0] === 'md' && bus.extensions[1] === 'markdown', '接管范围收窄到 md/markdown（其余格式保持官方视图、默认不被抢）', bus.extensions.join(','))
 ok(bus.meta && bus.meta.loading === 'text-pages' && bus.meta.wrap === true && bus.meta.priority === 'builtin', '业务 meta：文本分页+支持换行+builtin 档注册（官方视图保持默认，不抢）')
@@ -61,6 +61,21 @@ const T = bus._test
   ok(T.parseFileAddress('https://example.com') === undefined, '非 file 地址拒绝')
   ok(T.parseFileAddress('dsh-resource://file/') === undefined, '残缺地址拒绝')
   ok(T.parseFileAddress('dsh-resource://file/session/onlysid') === undefined, '无路径段拒绝')
+}
+
+// sessionFileAddress：对比视图只有「会话 id + 相对路径」，拼好要能被自家 parseFileAddress 解回来
+{
+  const a = T.sessionFileAddress('session-abc123', 'temp/说明 文档.md')
+  const back = T.parseFileAddress(a)
+  ok(back && back.scope === 'session' && back.sessionId === 'session-abc123' && back.path === 'temp/说明 文档.md', '会话 id + 相对路径 → 文件地址可往返')
+  const w = T.parseFileAddress(T.sessionFileAddress('s1', 'a\\b.md'))
+  ok(w && w.path === 'a/b.md', '反斜杠归一到 /')
+  // 假盘符路径拼接构造：别让查引用扫描器把字面量当真引用登记
+  const WIN_PATH = ['D:', '', 'demo', 'x.txt'].join(path.sep)
+  const drv = T.parseFileAddress(T.sessionFileAddress('s1', WIN_PATH))
+  ok(drv && drv.path === WIN_PATH.split(path.sep).join('/'), '会话作用域下的绝对路径保留盘符')
+  const dot = T.parseFileAddress(T.sessionFileAddress('s1', './temp/x.txt'))
+  ok(dot && dot.path === 'temp/x.txt', '开头的 ./ 丢掉')
 }
 
 // computeMatches / matchesByLine
@@ -124,8 +139,18 @@ const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sp-home-'))
 process.env.DSH_HOME = tmpHome
 const host = await import(pathToFileURL(path.join(root, 'lib', 'index.js')).href)
 const H2 = host._test
-ok(H2.LOADER_VERSION === '0.3.2', '宿主加载器版本')
+ok(H2.LOADER_VERSION === '0.4.0', '宿主加载器版本')
 ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT), '热件路径指到插件根目录')
+// 版本号散在四处，发版时漏一处就会「版本静默不一致」——这里钉死
+{
+  const vOf = (f) => (/const VERSION = '([^']+)'/.exec(read(f)) || [])[1]
+  const pkgV = JSON.parse(read('package.json')).version
+  const hostV = vOf('hot-host.cjs')
+  const clientV = vOf('hot-client.cjs')
+  ok(pkgV === H2.LOADER_VERSION && pkgV === hostV && pkgV === clientV,
+    '版本号四处一致（package.json / 加载器 / 宿主业务 / 浏览器业务）', [pkgV, H2.LOADER_VERSION, hostV, clientV].join(' / '))
+  ok(read('README.md').includes(pkgV) && read('README.en.md').includes(pkgV), '两份 README 都写到了当前版本号', pkgV)
+}
 {
   ok(H2.parseSub('/dsh-sp/save?x=1') === '/save', 'parseSub 去查询串')
   ok(H2.parseSub('/dsh-sp/') === '/', 'parseSub 根')
@@ -139,13 +164,13 @@ ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT),
 
 // ---------- 宿主业务：用加载器的 loadHostBus 真装载 hot-host.cjs ----------
 const hbus = H2.loadHostBus(H2.HOT_HOST)
-ok(hbus.version === '0.3.1' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
+ok(hbus.version === '0.4.0' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
 {
   const N = (s) => ({ get: (k) => (k === 'abs' ? s : null) })
   ok(hbus.handlers.stat(N('relative/a.md')).body.ok === false, 'stat 拒相对路径')
   const r1 = hbus.handlers.save({ abs: '', text: 'x' })
   ok(r1.body.ok === false && r1.body.error === 'empty-path', 'save 拒空路径')
-  const r2 = hbus.handlers.save({ abs: 'C:\\definitely-missing-dir-xyz\\nope.md', text: 'x' })
+  const r2 = hbus.handlers.save({ abs: path.join(os.tmpdir(), 'dsh-sp-no-such-' + Date.now(), 'nope.md'), text: 'x' })
   ok(r2.body.ok === false && r2.body.error === 'not-found', 'save 拒不存在文件（保存≠新建）')
 }
 {
@@ -180,18 +205,15 @@ ok(hbus.version === '0.3.1' && hbus.handlers && typeof hbus.handlers.save === 'f
   fs.rmSync(work, { recursive: true, force: true })
 }
 // 热装载监视：改热文件 → readHash 变化、loadHostBus 读到新版本（加载器轮询就是靠这个）
+// 改的是沙箱里的副本，真热件一个字节都不动（被强杀也不会留脏版本）
 {
-  const hotPath = H2.HOT_HOST
+  const hotPath = path.join(tmpHome, 'hot-host-copy.cjs')
+  fs.copyFileSync(H2.HOT_HOST, hotPath)
   const before = H2.readHash(hotPath)
-  const orig = fs.readFileSync(hotPath, 'utf8')
-  try {
-    fs.writeFileSync(hotPath, orig.replace("const VERSION = '0.3.1'", "const VERSION = '0.2.0-TEST'"), 'utf8')
-    const hbus2 = H2.loadHostBus(hotPath)
-    ok(before !== H2.readHash(hotPath) && hbus2.version === '0.2.0-TEST', '热文件哈希变化可被轮询发现、新业务可装载')
-  } finally {
-    fs.writeFileSync(hotPath, orig, 'utf8')
-    ok(H2.readHash(hotPath) === before, '热文件已还原')
-  }
+  fs.writeFileSync(hotPath, fs.readFileSync(hotPath, 'utf8').replace(/const VERSION = '[^']+'/, "const VERSION = '0.2.0-TEST'"), 'utf8')
+  const hbus2 = H2.loadHostBus(hotPath)
+  ok(before !== H2.readHash(hotPath) && hbus2.version === '0.2.0-TEST', '热文件哈希变化可被轮询发现、新业务可装载')
+  ok(H2.loadHostBus(H2.HOT_HOST).version === hbus.version, '真热件始终没被测试改过', H2.loadHostBus(H2.HOT_HOST).version)
 }
 
 fs.rmSync(tmpHome, { recursive: true, force: true })
