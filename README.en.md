@@ -5,12 +5,12 @@ English | [中文](README.md)
 Five additions to the DSH sidebar file preview:
 
 1. A "Source" view for `.md` / `.markdown`, with Markdown source tinting and line numbers.
-2. Edit and save: for Markdown files, "Edit" switches to the "Source" view; for all other formats, editing takes place directly in the current view.
+2. Edit and save: for Markdown files, "Edit" switches to the "Source" view; for all other text formats, editing takes place directly in the current view.
 3. Search and font-size controls in every view.
 4. A line-number toggle in the official "plain text" view, which can be switched on or off at any time.
 5. A toolbar on the official comparison view (the side-by-side page for a turn's changes): search either or both sides, scale both sides together, edit the right side only.
 
-Images, PDFs and HTML are not handled.
+**Binary formats are not handled**: Office files (doc / docx / ppt / pptx), spreadsheets (xls / xlsx), PDFs and images (png / jpg, …) are displayed by the official viewers; the plugin injects no toolbar, offers no editing and does not intercept Ctrl+F. Their bytes are not text, and opening then saving them as text would corrupt the original file. Text formats such as `.md` / `.markdown`, json / yaml / txt / log / csv / svg are unaffected.
 
 Toolbar labels are Chinese-only; official views follow the DSH language.
 
@@ -23,7 +23,8 @@ Select "Source" from the "open with" menu at the top right. The view shows line 
 
 **② Edit and save** (all text formats)
 - `.md` / `.markdown`: click "Edit" to switch to the "Source" view.
-- other formats (json / yaml / txt / log, etc.): click "Edit" to edit directly in the current view.
+- other text formats (json / yaml / txt / log, etc.): click "Edit" to edit directly in the current view.
+- binary formats (Office / spreadsheets / PDF / images): no editing is offered.
 - Save: press **Ctrl+S** or click "Save". Exit: press **Esc** or click "Exit".
 - If the file has been modified elsewhere, you are asked to choose "Save anyway" or "Reload latest".
 - The previous version is backed up automatically before overwriting, so accidental changes can be reverted.
@@ -48,8 +49,13 @@ The toolbar sits below the official header:
   - The comparison is the turn's snapshot and does not update when the file is saved.
 - One-sided comparisons (additions or deletions only) have no columns; the editor then fills the whole comparison area.
 
+## Known issues
+
+- **Official preview side**: the pdf.js 6.3.289 bundled with DSH `0.1.7-rc.2` calls `Map.prototype.getOrInsertComputed`, which browsers do not widely provide yet; PDF and Office previews (documents are converted to PDF first) fail with `this[#methodPromises].getOrInsertComputed is not a function`. This issue is unrelated to the plugin, requires an upstream fix, and cannot be avoided by changing browsers.
+
 ## Changelog
 
+- **0.4.1**: Office files, spreadsheets, PDFs and images are no longer handled. Since DSH 0.1.7 those viewers share the plain-text view's outer markers, and the previous version therefore classified them as text: clicking "Edit" in such a view either failed or overwrote the file as plain text. The decision is now made by file suffix, and matching files are left alone entirely. Also fixed: the toolbar attaches only to the currently visible pane (switching tabs no longer attaches it to a hidden one); the line-number toggle keys off the official `data-textpreview-plain` marker; the comparison view no longer offers "Edit right side" for binary files; and whole-file byte delivery no longer leaves the source view blank.
 - **0.4.0**: support for the official comparison view (see ⑤); states the supported DSH version.
 - **0.3.8**: fixed the read path behind "Edit / Save" (now `workspaceFiles.readBytes`); the toolbar now mounts immediately.
 
@@ -90,7 +96,7 @@ To add custom endpoints: just add a same-named key to `handlers` in `hot-host.cj
 
 ## Privacy & boundaries
 
-- Reads/writes only files you open, inside your local DSH process. **No external network calls.**
+- Reads and writes only files the user opens, inside the local DSH process. **No external network calls.**
 - Endpoint access control: requests carrying Origin must be same-origin; POST must be `application/json` (cross-origin blind requests die at the CORS preflight).
 - Pre-save backups go to `$DSH_HOME/sidebar-plus-backups/` (default `~/.dsh/sidebar-plus-backups/`; local runtime data; latest 20 copies per file name, 500 in total). A backup is a **full copy of the file**; if that directory is covered by a sync tool of your own, those copies travel with it — the plugin never sends data anywhere itself.
 - The `/dsh-sp/*` guard only blocks cross-origin web pages; a local process without an Origin header can also call `/dsh-sp/save` (absolute path + regular file only), i.e. a "back up, then overwrite any local file" primitive on par with other local CLI tools, granting no remote capability.

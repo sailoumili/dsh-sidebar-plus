@@ -1,6 +1,6 @@
 'use strict';
 const react = ENV.react;
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 
 const zh = {
   'viewer.label': '源编辑',
@@ -131,9 +131,10 @@ const CSS = [
   '.dshsp-conflict{color:#ff9040}',
   '.dshsp-ogroup{flex:none;display:flex;flex-direction:column;min-width:0}',
   '[data-document-preview]>[data-textpreview-body]>*{zoom:var(--dshsp-zoom,1)}',
-  '[data-document-preview$="/text"][data-dshsp-lineno="on"]{--dshsp-lnch:2;--dshsp-lnw:calc(var(--dshsp-lnch) * 1ch);--dshsp-lnpad:8px;--dshsp-lngap:12px}',
-  '[data-document-preview$="/text"][data-dshsp-lineno="on"] [data-textpreview-line]{padding-left:calc(var(--dshsp-lnpad) + var(--dshsp-lnw) + var(--dshsp-lngap));text-indent:calc(-1 * (var(--dshsp-lnw) + var(--dshsp-lngap)))}',
-  '[data-document-preview$="/text"][data-dshsp-lineno="on"] [data-textpreview-line]::before{content:attr(data-textpreview-line);display:inline-block;width:var(--dshsp-lnw);padding-right:var(--dshsp-lngap);text-align:right;color:var(--dsw-alias-label-tertiary,rgba(128,128,128,.6));user-select:none;-webkit-user-select:none;font-variant-numeric:tabular-nums}',
+  /* 行号：按官方纯文本正文自带的 data-textpreview-plain 认（不猜渲染器 id，官方改名也不失效）。 */
+  '[data-document-preview][data-dshsp-lineno="on"]:has([data-textpreview-plain]){--dshsp-lnch:2;--dshsp-lnw:calc(var(--dshsp-lnch) * 1ch);--dshsp-lnpad:8px;--dshsp-lngap:12px}',
+  '[data-document-preview][data-dshsp-lineno="on"]:has([data-textpreview-plain]) [data-textpreview-line]{padding-left:calc(var(--dshsp-lnpad) + var(--dshsp-lnw) + var(--dshsp-lngap));text-indent:calc(-1 * (var(--dshsp-lnw) + var(--dshsp-lngap)))}',
+  '[data-document-preview][data-dshsp-lineno="on"]:has([data-textpreview-plain]) [data-textpreview-line]::before{content:attr(data-textpreview-line);display:inline-block;width:var(--dshsp-lnw);padding-right:var(--dshsp-lngap);text-align:right;color:var(--dsw-alias-label-tertiary,rgba(128,128,128,.6));user-select:none;-webkit-user-select:none;font-variant-numeric:tabular-nums}',
   '.dshsp-ipwrap{flex:auto;display:flex;min-height:0;min-width:0}',
   '.dshsp-jumpbox{flex:none;display:inline-flex;align-items:center;gap:3px}',
   '.dshsp-jlabel{opacity:.7;font-size:11px}',
@@ -183,6 +184,34 @@ function sessionFileAddress(sessionId, raw) {
   const sid = encodeURIComponent(String(sessionId == null ? '' : sessionId)).replace(/%3A/gi, ':');
   return FILE_ADDRESS_PREFIX + 'session/' + sid + '/' + seg;
 }
+
+/* 二进制后缀名单（2026-09-27）：官方 0.1.7 起 Office / 表格 / PDF / 图片的正文与纯文本视图共用
+   同一对外壳标记，光看标记分不出「文本」还是「二进制」，只能按后缀判。命中就整块不接管
+   （不插工具条、不给编辑、不抢 Ctrl+F），免得把 Word / Excel 当记事本改坏。
+   名单与官方 0.1.7-rc.2 一致（UNVIEWABLE_BINARY_EXTENSIONS + 各渲染器 binaryExtensions），
+   已去掉本来就是文本的 svg / csv / tsv；官方以后新增二进制格式时，这里补一行。 */
+const BINARY_SUFFIX = new Set([
+  'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v',
+  'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma', 'opus',
+  'zip', 'gz', 'tgz', 'bz2', 'xz', 'zst', '7z', 'rar', 'tar', 'jar',
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'pages', 'numbers',
+  'exe', 'dll', 'so', 'dylib', 'bin', 'o', 'class', 'pyc', 'wasm',
+  'ttf', 'otf', 'woff', 'woff2', 'eot', 'dmg', 'iso', 'img',
+  'sqlite', 'db', 'psd', 'ai', 'sketch', 'tiff', 'tif', 'heic', 'heif', 'avif',
+  'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico',
+]);
+
+/* 路径后缀（小写、不含点）；取不到返回空串。 */
+const pathSuffix = (p) => {
+  const m = /\.([^./\\]+)\s*$/.exec(String(p == null ? '' : p).replace(/\\/g, '/').trim());
+  return m ? m[1].toLowerCase() : '';
+};
+
+/* 后缀命中二进制名单 → 不能按文本读、不能就地编辑；取不到后缀返回 false（还有 UTF-8 严格解码兜底）。 */
+const isBinaryPath = (p) => {
+  const s = pathSuffix(p);
+  return !!s && BINARY_SUFFIX.has(s);
+};
 
 function isHiddenEl(el) {
   try { return !!(el && el.closest && el.closest('[hidden],[aria-hidden="true"]')); } catch (e) { return false; }
@@ -507,7 +536,13 @@ function SourceBody(props) {
   };
 
   const isText = content && content.kind === 'text';
-  const text = override != null ? override : (isText ? content.text : '');
+  /* 官方若按「整包字节」（bytes-complete）给内容，本视图只认文本分页 → 会整屏空白。
+     这里补一条兜底：能按 UTF-8 严格解出就当文本显示，解不出就明确提示，不再白屏。 */
+  const bytesText = useMemo(() => {
+    if (!content || content.kind !== 'bytes') return '';
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(content.data); } catch (e) { return '（该文件不是文本，无法在此视图显示）'; }
+  }, [content]);
+  const text = override != null ? override : (isText ? content.text : bytesText);
   const lines = useMemo(() => splitLines(text), [text]);
   const eof = override != null ? true : !!(isText && content.eof);
   const matches = useMemo(
@@ -693,8 +728,7 @@ function SourceBody(props) {
     if (acRef.current) { try { acRef.current.abort(); } catch (e) {  } }
   }, []);
 
-  if (!isText && override == null) {
-    if (content && content.kind === 'bytes') return null;
+  if (!isText && override == null && !bytesText) {
     return h('div', { className: 'dshsp-root' }, h('div', { className: 'dshsp-status' }, label('loading')));
   }
 
@@ -931,28 +965,41 @@ function enhanceStart() {
     return { box: box, input: inp };
   }
 
+  /* 面板对应的文件路径：优先文件地址，其次面板里的路径标签。 */
+  function paneFilePath(pane) {
+    try {
+      const f = parseFileAddress(pane.getAttribute('data-textpreview-url') || '');
+      if (f && f.path) return f.path;
+      const pathEl = pane.querySelector('[data-textpreview-path]');
+      if (pathEl) return pathEl.textContent || '';
+    } catch (e) { }
+    return '';
+  }
+
+  /* 找当前该干活的面板：跳过藏起来的（官方把非活动面板打 aria-hidden 留在 DOM 里）、
+     跳过二进制文件，优先取处于打开态的那一个。 */
   function paneNow() {
-    const pane = document.querySelector('[data-document-preview]');
-    if (!pane || !pane.isConnected || pane.getAttribute('data-document-preview') === SELF_ID) return null;
-    const body = pane.querySelector('[data-textpreview-body]');
-    if (!body) return null;
-    if (!paneMarked) { paneMarked = true; mark('official-pane-seen'); }
-    return { pane: pane, body: body };
+    let panes;
+    try { panes = document.querySelectorAll('[data-document-preview]'); } catch (e) { return null; }
+    const pick = (pane, body) => {
+      if (!paneMarked) { paneMarked = true; mark('official-pane-seen'); }
+      return { pane: pane, body: body };
+    };
+    let fallback = null;
+    for (const pane of panes) {
+      if (!pane.isConnected || pane.getAttribute('data-document-preview') === SELF_ID) continue;
+      if (isHiddenEl(pane) || isBinaryPath(paneFilePath(pane))) continue;
+      const body = pane.querySelector('[data-textpreview-body]');
+      if (!body) continue;
+      if (pane.closest('[data-sidebar-right-open]') || pane.hasAttribute('data-dockkit-float')) return pick(pane, body);
+      if (!fallback) fallback = pick(pane, body);
+    }
+    return fallback;
   }
 
   function paneAllowsEdit(pane) {
-    try {
-      let p = '';
-      const f = parseFileAddress(pane.getAttribute('data-textpreview-url') || '');
-      if (f && f.path) p = f.path;
-      if (!p) {
-        const pathEl = pane.querySelector('[data-textpreview-path]');
-        if (pathEl) p = pathEl.textContent || '';
-      }
-      const m = /\.([^./\\]+)\s*$/.exec(String(p).replace(/\\/g, '/').trim());
-      const ext = m ? m[1].toLowerCase() : '';
-      return ext === 'md' || ext === 'markdown';
-    } catch (e) { return false; }
+    const ext = pathSuffix(paneFilePath(pane));
+    return ext === 'md' || ext === 'markdown';
   }
 
   const group = document.createElement('div');
@@ -1006,8 +1053,9 @@ function enhanceStart() {
   }
   async function gotoSourceEdit() {
     try {
-      const pane = document.querySelector('[data-document-preview]');
-      if (!pane) return;
+      const cur = paneNow();
+      if (!cur) return;
+      const pane = cur.pane;
       if (pane.getAttribute('data-document-preview') === SELF_ID) { pendingEdit = true; return; }
       const menuBtn = pane.querySelector('[data-document-viewer-menu]');
       if (!menuBtn) { barFlash('请先切到「源编辑」视图'); return; }
@@ -1473,13 +1521,18 @@ function enhanceStart() {
     for (let i = 1; i <= n; i++) out.push('<div>' + i + '</div>');
     rved.gut.innerHTML = out.join('');
   }
+  /* 对比页右侧＝磁盘上的当前文件；二进制文件（Office / 表格 / PDF…）不给「编辑右侧」。 */
+  function rvBinaryNow() {
+    try { const caps = rvSource(); return !!(caps && caps.path && isBinaryPath(caps.path)); } catch (e) { return false; }
+  }
   function rvSyncUi() {
     const on = rved.active;
+    const bin = !on && rvBinaryNow();
     rSaveBtn.style.display = on ? '' : 'none';
     rExitBtn.style.display = on ? '' : 'none';
     rForceBtn.style.display = (on && rved.conflict) ? '' : 'none';
     rReloadBtn.style.display = (on && rved.conflict) ? '' : 'none';
-    rEditBtn.style.display = on ? 'none' : '';
+    rEditBtn.style.display = (on || bin) ? 'none' : '';
     rFindBtn.style.display = on ? 'none' : '';
     rvJump.box.style.display = on ? '' : 'none';
     setText(rSaveBtn, '保存' + (rved.dirty ? ' *' : ''));
@@ -1592,6 +1645,7 @@ function enhanceStart() {
     let caps = rvSource();
     if (!caps) return;
     if (!caps.address) { rvFlash('无法定位文件（缺少会话或路径）'); return; }
+    if (rvBinaryNow()) { rvFlash('该格式不是文本文件（Office / 表格 / PDF 等），不能用文本编辑器改'); return; }
     rved.busy = true;
     try {
       if (!caps.right) {
@@ -1740,7 +1794,8 @@ function enhanceStart() {
     }
     attachedPane = cur.pane;
     findRow.style.display = (ff.open && !ip.active) ? 'flex' : 'none';
-    const isPlain = /\/text$/.test(String(cur.pane.getAttribute('data-document-preview') || ''));
+    /* 行号只认官方纯文本正文自带的 data-textpreview-plain 标记（不猜渲染器 id）。 */
+    const isPlain = !!cur.body.querySelector('[data-textpreview-plain]');
     linenoBtn.style.display = (isPlain && !ip.active) ? '' : 'none';
     setText(linenoBtn, '行号');
     linenoBtn.className = plainLineNo ? 'dshsp-btn dshsp-btn-on' : 'dshsp-btn';
@@ -1920,6 +1975,8 @@ return {
     fromEditorText: fromEditorText,
     humanBytes: humanBytes,
     bytesOf: bytesOf,
+    pathSuffix: pathSuffix,
+    isBinaryPath: isBinaryPath,
     readWholeBytes: readWholeBytes,
     readWholeText: readWholeText,
   },

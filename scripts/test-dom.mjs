@@ -93,7 +93,7 @@ const ENV_REMOTE = {
   },
 }
 const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE })
-ok(bus.version === '0.4.0', '业务经 compileBus 就绪', bus.version)
+ok(bus.version === '0.4.1', '业务经 compileBus 就绪', bus.version)
 const b1 = bus._test.bytesOf(MD_BYTES)
 const b2 = bus._test.bytesOf(MD_B64)
 const b3 = bus._test.bytesOf(MD_BYTES.buffer)
@@ -122,7 +122,7 @@ ok(q('[data-textpreview-line="1"]') && q('[data-textpreview-line="5"]'), '5 行�
 ok(q('[data-textpreview-line="1"] .dshsp-ln').textContent === '1', '行号列文字正确')
 ok(q('[data-textpreview-line="1"]').className.includes('dshsp-h1'), '标题行有着色类')
 ok(q('.dshsp-b') && q('.dshsp-task'), '加粗/任务着色在位')
-ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.0', '业务版本标记在 DOM 上（热替换观测点）')
+ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.1', '业务版本标记在 DOM 上（热替换观测点）')
 const btns = () => [...qa('.dshsp-bar button')]
 ok(btns().some((b) => b.textContent.includes('编辑')), '工具栏有「编辑」按钮（无 t 时走中文兜底字典）')
 
@@ -310,6 +310,10 @@ await act(async () => root_.unmount())
   ok(ofind.style.display === 'none', 'Esc 关闭搜索条')
   // 「行号」开关：只在官方纯文本视图出现，默认关，点一下才画号
   ok(obtn('行号').style.display === 'none', '非纯文本视图：「行号」开关不出现')
+  // 官方纯文本正文自带 data-textpreview-plain（渲染器 id 不参与判断）
+  const plainMark = win.document.createElement('span')
+  plainMark.setAttribute('data-textpreview-plain', 'true')
+  obody.appendChild(plainMark)
   pane.setAttribute('data-document-preview', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/text')
   await act(async () => { await new Promise((r) => setTimeout(r, 700)) })
   ok(obtn('行号').style.display !== 'none' && obtn('行号').textContent === '行号' && !obtn('行号').className.includes('dshsp-btn-on'), '纯文本视图：出现「行号」开关（默认关、不打勾）', obtn('行号').textContent + ' / ' + obtn('行号').className)
@@ -523,6 +527,106 @@ await act(async () => root_.unmount())
     scopeEl.remove()
   }
 
+  // ================= 4.7) 新版官方多格式预览（Office / 表格 / PDF）一律不接管 =================
+  // 官方 0.1.7 起这些渲染器的正文与纯文本视图共用同一对外壳标记，只能靠后缀判「字节是不是文本」。
+  {
+    pane.remove()   // 清场：保证下面断言的是"第一个能干活的面板"
+    const DOC = '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/'
+    const mkPane2 = (id, file, inner) => {
+      const p = win.document.createElement('div')
+      p.setAttribute('data-document-preview', id)
+      if (file) p.setAttribute('data-textpreview-url', 'dsh-resource://file/session/s1/out/' + file)
+      const b = win.document.createElement('div')
+      b.setAttribute('data-textpreview-body', 'true')
+      b.innerHTML = inner || ''
+      p.appendChild(b)
+      return { p, b }
+    }
+    const settle = async (ms) => { await act(async () => { await new Promise((r) => setTimeout(r, ms || 250)) }) }
+    const groupOf = (p) => p.querySelector(':scope > .dshsp-ogroup')
+    const btnOf = (p, t) => groupOf(p) && [...groupOf(p).querySelectorAll('.dshsp-bar button')].find((b) => (b.textContent || '').trim() === t)
+
+    const o = mkPane2(DOC + 'office', 'report.docx', '<div data-pdf-preview="1"></div>')
+    win.document.body.appendChild(o.p); await settle()
+    ok(!groupOf(o.p), '新版 Office 预览（docx）：不挂工具条、不给编辑')
+    o.p.remove(); await settle(150)
+
+    const x = mkPane2(DOC + 'excel', 'data.xlsx', '<div>sheet</div>')
+    win.document.body.appendChild(x.p); await settle()
+    ok(!groupOf(x.p), '新版表格预览（xlsx）：不挂工具条')
+    x.p.remove(); await settle(150)
+
+    const f = mkPane2(DOC + 'pdf', 'ascii.pdf', '<div data-pdf-preview="1"></div>')
+    win.document.body.appendChild(f.p); await settle()
+    ok(!groupOf(f.p), '新版 PDF 预览：不挂工具条（全 ASCII 的 PDF 也不能当文本改）')
+    f.p.remove(); await settle(150)
+
+    const g = mkPane2(DOC + 'image', 'shot.png', '<div data-image-preview="1"></div>')
+    win.document.body.appendChild(g.p); await settle()
+    ok(!groupOf(g.p), '新版图片预览（png）：不挂工具条')
+    g.p.remove(); await settle(150)
+
+    // 同一表格渲染器下的 csv / 图片渲染器下的 svg：后缀本来就是文本 → 照旧接管
+    const c = mkPane2(DOC + 'excel', 'data.csv', '<div>a,b</div>')
+    win.document.body.appendChild(c.p); await settle()
+    ok(!!groupOf(c.p), '同一表格渲染器下的 csv（文本）：仍然挂工具条（编辑能力不缩水）')
+    c.p.remove(); await settle(150)
+
+    // 被 aria-hidden 藏起来的面板不接管：工具条要落在可见的那一个上
+    const hid = mkPane2(DOC + 'text', 'hidden.txt', '<div data-textpreview-plain="true"></div>')
+    hid.p.setAttribute('aria-hidden', 'true')
+    const vis = mkPane2('official/plain', 'visible.txt', '<div data-textpreview-plain="true"><div data-textpreview-line="1">可见文本</div></div>')
+    win.document.body.appendChild(hid.p)
+    win.document.body.appendChild(vis.p); await settle()
+    ok(!!groupOf(vis.p) && !groupOf(hid.p), '面板被 aria-hidden 藏起来时：工具条只挂可见的那一个')
+    // 纯文本正文自带 data-textpreview-plain：渲染器 id 不是 /text 也能认出「行号」开关
+    ok(!!btnOf(vis.p, '行号') && btnOf(vis.p, '行号').style.display !== 'none', '纯文本正文按 data-textpreview-plain 认出：「行号」开关出现')
+    hid.p.remove(); vis.p.remove(); await settle(150)
+
+    // 对比页右栏是二进制文件时不出现「编辑右侧」
+    const scope2 = win.document.createElement('div')
+    scope2.setAttribute('data-sidebar-right-session', 's1')
+    const rroot2 = win.document.createElement('div')
+    rroot2.setAttribute('data-changes-review', '1')
+    const rhead2 = win.document.createElement('div')
+    const rf2 = win.document.createElement('button')
+    rf2.setAttribute('data-review-file', 'out/report.docx')
+    rhead2.appendChild(rf2)
+    rroot2.appendChild(rhead2)
+    const rbody2 = win.document.createElement('div')
+    rbody2.setAttribute('data-review-view', 'unified')
+    rbody2.textContent = '对比正文'
+    rroot2.appendChild(rbody2)
+    scope2.appendChild(rroot2)
+    win.document.body.appendChild(scope2); await settle()
+    const rbtn2 = (t) => groupOf(rroot2) && [...groupOf(rroot2).querySelectorAll('.dshsp-bar button')].find((b) => (b.textContent || '').trim() === t)
+    ok(!!groupOf(rroot2) && !!rbtn2('编辑右侧') && rbtn2('编辑右侧').style.display === 'none', '对比页右栏是 docx：工具条在，但「编辑右侧」不出现')
+    rf2.setAttribute('data-review-file', 'out/report.md'); await settle(400)
+    ok(!!rbtn2('编辑右侧') && rbtn2('编辑右侧').style.display !== 'none', '对比页换回 md：「编辑右侧」恢复出现')
+    scope2.remove(); await settle(150)
+  }
+
+  // ================= 4.8) 官方按「整包字节」给内容时不再白屏 =================
+  {
+    const c2 = win.document.createElement('div')
+    win.document.body.appendChild(c2)
+    let root2
+    await act(async () => {
+      root2 = ReactDOMClient.createRoot(c2)
+      root2.render(React.createElement(bus.Body, Object.assign({}, props, { content: { kind: 'bytes', data: MD_BYTES } })))
+    })
+    ok(c2.textContent.includes('测试标题'), '官方给整包字节（bytes-complete）时按 UTF-8 解出显示，不再白屏')
+    await act(async () => { root2.unmount() })
+    let root3
+    await act(async () => {
+      root3 = ReactDOMClient.createRoot(c2)
+      root3.render(React.createElement(bus.Body, Object.assign({}, props, { content: { kind: 'bytes', data: new Uint8Array([0xff, 0xfe, 0x00, 0x41]) } })))
+    })
+    ok(c2.textContent.includes('不是文本'), '整包字节解不出 UTF-8 时给出明确提示（不是整屏空白）')
+    await act(async () => { root3.unmount() })
+    c2.remove()
+  }
+
   await act(async () => { bus.teardown() })
   ok(!win.document.querySelector('.dshsp-ogroup'), 'teardown 后增强层工具条回收（含对比页）')
   pane.remove()
@@ -554,7 +658,7 @@ await act(async () => root_.unmount())
   ok(reg.def && reg.def.id === api._test.ID && reg.def.extensions.includes('md') && reg.def.loading === 'text-pages', '加载器注册渲染器（md 家族、text-pages）')
   ok(Array.isArray(reg.def.extensions) && reg.def.extensions.length === 2 && reg.def.extensions[0] === 'md', '扩展名单是活数组且已收窄到 md/markdown（其余格式保持官方视图）', String(reg.def.extensions.length))
   ok(reg.slotKey === api._test.ID && reg.Shell === api._test.Shell, '空壳组件挂上文档插槽')
-  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.0', '首轮 tick 已完成业务热装载')
+  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.1', '首轮 tick 已完成业务热装载')
   ok(!!win.document.querySelector('style[data-plugin-css="dsh-sidebar-plus"]'), '样式由业务 css 注入')
   for (const fn of effectDisposers) { try { const inner = fn(); if (typeof inner === 'function') inner() } catch (e) { /* ignore */ } }
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })

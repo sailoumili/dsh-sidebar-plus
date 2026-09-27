@@ -38,17 +38,27 @@ ok(api._test.ID === 'dsh-sidebar-plus/source' && api._test.NS === 'dshSidebarPlu
 
 // ---------- 浏览器业务：通过加载器的 compileBus 真编译 hot-client.cjs ----------
 const bus = api._test.compileBus(read('hot-client.cjs'), { react: stubReact, remote: null })
-ok(typeof bus.version === 'string' && bus.version === '0.4.0', '业务版本号', bus.version)
+ok(typeof bus.version === 'string' && bus.version === '0.4.1', '业务版本号', bus.version)
 ok(typeof bus.Body === 'function' && bus.title === '源编辑' && Array.isArray(bus.extensions), '业务契约字段齐全')
 ok(bus.extensions.length === 2 && bus.extensions[0] === 'md' && bus.extensions[1] === 'markdown', '接管范围收窄到 md/markdown（其余格式保持官方视图、默认不被抢）', bus.extensions.join(','))
 ok(bus.meta && bus.meta.loading === 'text-pages' && bus.meta.wrap === true && bus.meta.priority === 'builtin', '业务 meta：文本分页+支持换行+builtin 档注册（官方视图保持默认，不抢）')
 ok(bus.locale && bus.locale.zh && bus.locale.en && typeof bus.css === 'string' && bus.css.includes('.dshsp-root'), '字典与样式随业务热载')
 ok(bus.css.includes('[data-document-preview]>[data-textpreview-body]>*{zoom:var(--dshsp-zoom,1)}'), '官方视图字号走内容区 zoom 变量（不再强制覆盖官方默认）')
-ok(bus.css.includes('[data-document-preview$="/text"][data-dshsp-lineno="on"] [data-textpreview-line]::before') && bus.css.includes('attr(data-textpreview-line)'), '官方「纯文本」视图行号是可选开关（面板带 data-dshsp-lineno="on" 才画号，默认关）')
+ok(bus.css.includes('[data-document-preview][data-dshsp-lineno="on"]:has([data-textpreview-plain]) [data-textpreview-line]::before') && bus.css.includes('attr(data-textpreview-line)'), '官方「纯文本」视图行号是可选开关（按 data-textpreview-plain 标记认，带 data-dshsp-lineno="on" 才画号，默认关）')
 ok(bus.css.includes('--dshsp-lnw:calc(var(--dshsp-lnch) * 1ch)') && bus.css.includes('--dshsp-lnpad:8px') && bus.css.includes('--dshsp-lngap:12px'), '行号列几何对齐官方代码视图（8px+官方 8px 内边距=16px 缩进、位数自适应列宽、12px 间隙 → 两视图同列）')
 ok(bus.css.includes('.dshsp-btn-on{font-weight:700'), '开关开启态用加粗+高亮底（不打勾，关闭即恢复）')
 ok(!bus.css.includes('.dshsp-fab'), '旧悬浮药丸样式已移除（官方视图改用源编辑同款工具条）')
 const T = bus._test
+
+// 二进制后缀判据（本次新增：决定是否接管 Office / 表格 / PDF / 图片这些新格式）
+{
+  ok(T.isBinaryPath('a/report.docx') && T.isBinaryPath('x/DATA.XLSX') && T.isBinaryPath('b.pdf') && T.isBinaryPath('c.png'),
+    '二进制后缀判据：Office / 表格 / PDF / 图片 命中（不接管）')
+  ok(T.isBinaryPath('c:\\work\\旧稿.PPTX') && T.isBinaryPath('z.docx '), '二进制后缀判据：反斜杠路径、大写、行尾空格也命中')
+  ok(!T.isBinaryPath('a.md') && !T.isBinaryPath('a.csv') && !T.isBinaryPath('a.tsv') && !T.isBinaryPath('a.svg') && !T.isBinaryPath('a.json') && !T.isBinaryPath('noext'),
+    '文本后缀 / 无后缀不命中（继续按文本处理，能力不缩水）')
+  ok(T.pathSuffix('C:\\x\\y.MD') === 'md' && T.pathSuffix('') === '' && T.pathSuffix(null) === '', '后缀提取：反斜杠、大写、空值')
+}
 
 // parseFileAddress
 {
@@ -139,7 +149,7 @@ const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sp-home-'))
 process.env.DSH_HOME = tmpHome
 const host = await import(pathToFileURL(path.join(root, 'lib', 'index.js')).href)
 const H2 = host._test
-ok(H2.LOADER_VERSION === '0.4.0', '宿主加载器版本')
+ok(H2.LOADER_VERSION === '0.4.1', '宿主加载器版本')
 ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT), '热件路径指到插件根目录')
 // 版本号散在四处，发版时漏一处就会「版本静默不一致」——这里钉死
 {
@@ -164,7 +174,7 @@ ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT),
 
 // ---------- 宿主业务：用加载器的 loadHostBus 真装载 hot-host.cjs ----------
 const hbus = H2.loadHostBus(H2.HOT_HOST)
-ok(hbus.version === '0.4.0' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
+ok(hbus.version === '0.4.1' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
 {
   const N = (s) => ({ get: (k) => (k === 'abs' ? s : null) })
   ok(hbus.handlers.stat(N('relative/a.md')).body.ok === false, 'stat 拒相对路径')
