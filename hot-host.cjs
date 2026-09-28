@@ -1,5 +1,5 @@
 'use strict';
-const VERSION = '0.4.1';
+const VERSION = '0.4.2';
 
 const MAX_TEXT_BYTES = 32 * 1024 * 1024;
 const KEEP_PER_BASENAME = 20;
@@ -120,7 +120,7 @@ function statHandler(searchParams) {
   return { body: { ok: true, abs: target.abs, mtimeMs: cur.mtimeMs, bytes: cur.bytes } };
 }
 
-/* 页面侧上报的时间点，只存进程内存（挂 globalThis，热更新重建也不丢），GET /dsh-sp/marks 读回。 */
+/* 页面侧上报的时间点，只存进程内存，由 GET /dsh-sp/marks 读回。 */
 function marksStore() {
   const g = globalThis;
   if (!Array.isArray(g.__dshSpMarks)) g.__dshSpMarks = [];

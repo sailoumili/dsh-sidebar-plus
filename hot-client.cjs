@@ -1,6 +1,6 @@
 'use strict';
 const react = ENV.react;
-const VERSION = '0.4.1';
+const VERSION = '0.4.2';
 
 const zh = {
   'viewer.label': '源编辑',
@@ -147,6 +147,8 @@ const CSS = [
   '::highlight(dshsp-find-cur){background:rgba(255,130,20,.85)}',
   '::highlight(dshsp-rvfind){background:rgba(255,205,0,.45)}',
   '::highlight(dshsp-rvfind-cur){background:rgba(255,130,20,.85)}',
+  /* 官方插槽里的挂钩占位：不显示任何东西，工具条仍在原来的那一行。 */
+  '.dshsp-slot{display:none;width:0;height:0;overflow:hidden}',
 ].join('\n');
 
 const FILE_ADDRESS_PREFIX = 'dsh-resource://file/';
@@ -185,11 +187,9 @@ function sessionFileAddress(sessionId, raw) {
   return FILE_ADDRESS_PREFIX + 'session/' + sid + '/' + seg;
 }
 
-/* 二进制后缀名单（2026-09-27）：官方 0.1.7 起 Office / 表格 / PDF / 图片的正文与纯文本视图共用
-   同一对外壳标记，光看标记分不出「文本」还是「二进制」，只能按后缀判。命中就整块不接管
-   （不插工具条、不给编辑、不抢 Ctrl+F），免得把 Word / Excel 当记事本改坏。
-   名单与官方 0.1.7-rc.2 一致（UNVIEWABLE_BINARY_EXTENSIONS + 各渲染器 binaryExtensions），
-   已去掉本来就是文本的 svg / csv / tsv；官方以后新增二进制格式时，这里补一行。 */
+/* 二进制后缀名单（兜底判据）：官方注册表问不到时按它判；zip / exe 这类官方不给渲染器的后缀，
+   也靠它避免把工具条挂到「打不开」的空状态上。取自官方各渲染器的 binaryExtensions，
+   不含本来就是文本的 svg / csv / tsv。 */
 const BINARY_SUFFIX = new Set([
   'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v',
   'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma', 'opus',
@@ -212,6 +212,48 @@ const isBinaryPath = (p) => {
   const s = pathSuffix(p);
   return !!s && BINARY_SUFFIX.has(s);
 };
+
+/* 官方判据：注册表里每个渲染器自带 binaryExtensions（官方强制它是 extensions 的子集）。
+   三态：true 是二进制 / false 不是 / null 问不到（服务没到或加载器为旧版）。
+   官方新增二进制格式时这里自动跟随，无需改代码。 */
+function officialBinary(abs) {
+  try {
+    const svc = ENV.previews && ENV.previews.value;
+    if (!svc || typeof svc.getSnapshot !== 'function') return null;
+    const defs = svc.getSnapshot();
+    if (!Array.isArray(defs) || !defs.length) return null;
+    const suffix = pathSuffix(abs);
+    if (!suffix) return null;
+    let declaresBinary = false;
+    for (const def of defs) {
+      const bin = def && def.binaryExtensions;
+      if (!Array.isArray(bin) || !bin.length) continue;
+      declaresBinary = true;
+      for (const raw of bin) {
+        if (String(raw).replace(/^\.+/, '').toLowerCase() === suffix) return true;
+      }
+    }
+    return declaresBinary ? false : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/* 合并判据：官方说了算；官方没这个后缀、内置名单有的（zip / exe 这类）仍按二进制处理。
+   markOnce 给每种结果打一次点，供 /dsh-sp/marks 看出实际走了哪条。 */
+const judgeMarks = {};
+function markOnce(name) { if (judgeMarks[name]) return; judgeMarks[name] = true; mark(name); }
+function pathIsBinary(abs) {
+  const off = officialBinary(abs);
+  if (off === true) { markOnce('judge-official-binary'); return true; }
+  if (off === false) {
+    if (isBinaryPath(abs)) { markOnce('judge-official-text-but-static-hit'); return true; }
+    markOnce('judge-official-text');
+    return false;
+  }
+  markOnce('judge-offservice-absent');
+  return isBinaryPath(abs);
+}
 
 function isHiddenEl(el) {
   try { return !!(el && el.closest && el.closest('[hidden],[aria-hidden="true"]')); } catch (e) { return false; }
@@ -319,8 +361,7 @@ function fromEditorText(draft, meta) {
   if (meta && meta.bom) t = '\uFEFF' + t;
   return t;
 }
-/* 把文本灌进文本框后直接 focus()，浏览器会把视图滚到末尾 —— 必须显式把光标与滚动条放回目标行。
-   否则「点编辑」看到的是文件最后一屏，而不是用户想看的那一行。 */
+/* 灌完文本直接 focus() 会让浏览器把视图滚到末尾 → 需显式把光标与滚动条放回目标行。 */
 function lineStartOffset(text, line) {
   const s = String(text == null ? '' : text);
   const n = Math.max(1, Math.round(line) || 1);
@@ -406,8 +447,7 @@ function mark(name) {
   } catch (e) {  }
 }
 
-/* 整文件读取：新版走 workspaceFiles.readBytes（返回 Uint8Array），旧版 readAll 另留兜底。
-   按类型标签判断，不靠 instanceof —— 跨 realm（iframe/沙箱）时 instanceof 会判失败。 */
+/* 整文件读取走 workspaceFiles.readBytes（Uint8Array），旧版 readAll 兜底；类型判断用标签不用 instanceof（跨 realm 会误判）。 */
 const TYPED_TAG_RE = /^\[object (Uint8Clamped|Int8|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array\]$/;
 function bytesOf(data) {
   if (data == null) return null;
@@ -536,8 +576,7 @@ function SourceBody(props) {
   };
 
   const isText = content && content.kind === 'text';
-  /* 官方若按「整包字节」（bytes-complete）给内容，本视图只认文本分页 → 会整屏空白。
-     这里补一条兜底：能按 UTF-8 严格解出就当文本显示，解不出就明确提示，不再白屏。 */
+  /* 官方按「整包字节」给内容时本视图只认文本分页 → 兜底：UTF-8 解得出就当文本显示，解不出明确提示。 */
   const bytesText = useMemo(() => {
     if (!content || content.kind !== 'bytes') return '';
     try { return new TextDecoder('utf-8', { fatal: true }).decode(content.data); } catch (e) { return '（该文件不是文本，无法在此视图显示）'; }
@@ -839,6 +878,49 @@ function SourceBody(props) {
 const ff = { open: false, q: '', cs: false, ranges: [], idx: 0 };
 let enh = null;
 
+/* 官方插槽挂钩：加载器把这两个组件注册进 sidebar.right.tab.document.actions（Actions）
+   与 deliverables.review.file.actions（ReviewActions）。组件是看不见的占位节点，
+   画面仍是原来那一行工具条；面板归属与文件绝对路径由官方递来，不再翻 DOM 猜。
+   挂钩缺失（官方没有该插槽或改了名）→ 自动退回整页扫描。 */
+const slot = { doc: null, review: null };
+const anchored = { doc: false, review: false };
+
+/* 每次挂载给一个只比较身份用的对象，避免同一次重复渲染把钩子摘了又挂。 */
+function useMountToken() {
+  return react.useMemo(function () { return {}; }, []);
+}
+
+function useSlotHook(kind, token, info) {
+  const ref = react.useRef(null);
+  react.useEffect(function () {
+    const el = ref.current;
+    if (!el) return function () { };
+    if (enh && typeof enh.slotAttach === 'function') enh.slotAttach(kind, el, info);
+    return function () {
+      if (enh && typeof enh.slotGone === 'function') enh.slotGone(kind, el);
+    };
+  }, [token, kind, info.abs, info.url]);
+  return ref;
+}
+
+function Actions(props) {
+  const abs = (props && typeof props.absolutePath === 'string') ? props.absolutePath : '';
+  const token = useMountToken();
+  const ref = useSlotHook('doc', token, { abs: abs });
+  return react.createElement('span', {
+    ref: ref, className: 'dshsp-slot', 'data-dshsp-slot': 'actions', 'data-dshsp-abs': abs, hidden: true,
+  });
+}
+
+function ReviewActions(props) {
+  const url = (props && typeof props.actionUrl === 'string') ? props.actionUrl : '';
+  const token = useMountToken();
+  const ref = useSlotHook('review', token, { url: url });
+  return react.createElement('span', {
+    ref: ref, className: 'dshsp-slot', 'data-dshsp-slot': 'review', 'data-dshsp-url': url, hidden: true,
+  });
+}
+
 function walkTextRanges(container, query, caseSensitive) {
   const out = [];
   const q = String(query || '');
@@ -918,7 +1000,7 @@ function revealHighlight(st) {
 function enhanceStart() {
   if (enh) return;
   if (typeof document === 'undefined' || !document.body) { if (typeof setTimeout === 'function') setTimeout(enhanceStart, 500); return; }
-  try { const legacy = document.querySelector('style[data-plugin-css="dsh-sidebar-plus-official"]'); if (legacy) legacy.remove(); } catch (e) { } // 旧版本注入过这个 style，清掉防残留
+  try { const legacy = document.querySelector('style[data-plugin-css="dsh-sidebar-plus-official"]'); if (legacy) legacy.remove(); } catch (e) { } // 清理历史版本注入过的样式
 
   let attachedPane = null;
   let msgTimer = null;
@@ -965,8 +1047,9 @@ function enhanceStart() {
     return { box: box, input: inp };
   }
 
-  /* 面板对应的文件路径：优先文件地址，其次面板里的路径标签。 */
-  function paneFilePath(pane) {
+  /* 面板对应的文件路径：优先挂钩递来的绝对路径，其次文件地址，再次面板里的路径标签。 */
+  function paneFilePath(pane, known) {
+    if (known) return known;
     try {
       const f = parseFileAddress(pane.getAttribute('data-textpreview-url') || '');
       if (f && f.path) return f.path;
@@ -976,19 +1059,35 @@ function enhanceStart() {
     return '';
   }
 
-  /* 找当前该干活的面板：跳过藏起来的（官方把非活动面板打 aria-hidden 留在 DOM 里）、
-     跳过二进制文件，优先取处于打开态的那一个。 */
-  function paneNow() {
+  /* 挂钩在位时一步到位：锚点就长在官方当前渲染的那个面板里，路径也是官方递的绝对路径。
+     返回值三种含义——对象＝用这个面板；false＝官方明确说了这文件不该接管；null＝挂钩没说话，去扫描。 */
+  function paneFromSlot() {
+    const s = slot.doc;
+    if (!s || !s.el || !s.el.isConnected) return null;
+    let pane = null;
+    try { pane = s.el.closest('[data-document-preview]'); } catch (e) { return null; }
+    if (!pane || pane.getAttribute('data-document-preview') === SELF_ID || isHiddenEl(pane)) return null;
+    const abs = paneFilePath(pane, s.abs);
+    if (pathIsBinary(abs)) { anchored.doc = true; return false; }
+    const body = pane.querySelector('[data-textpreview-body]');
+    if (!body) return null;
+    if (!paneMarked) { paneMarked = true; mark('official-pane-seen'); }
+    anchored.doc = true;
+    return { pane: pane, body: body, abs: abs, via: 'slot' };
+  }
+
+  /* 扫描兜底（挂钩没说话时走这里）：跳过隐藏面板与二进制文件，优先取打开态的那个。 */
+  function paneNowScan() {
     let panes;
     try { panes = document.querySelectorAll('[data-document-preview]'); } catch (e) { return null; }
     const pick = (pane, body) => {
       if (!paneMarked) { paneMarked = true; mark('official-pane-seen'); }
-      return { pane: pane, body: body };
+      return { pane: pane, body: body, abs: paneFilePath(pane, ''), via: 'scan' };
     };
     let fallback = null;
     for (const pane of panes) {
       if (!pane.isConnected || pane.getAttribute('data-document-preview') === SELF_ID) continue;
-      if (isHiddenEl(pane) || isBinaryPath(paneFilePath(pane))) continue;
+      if (isHiddenEl(pane) || pathIsBinary(paneFilePath(pane, ''))) continue;
       const body = pane.querySelector('[data-textpreview-body]');
       if (!body) continue;
       if (pane.closest('[data-sidebar-right-open]') || pane.hasAttribute('data-dockkit-float')) return pick(pane, body);
@@ -997,8 +1096,16 @@ function enhanceStart() {
     return fallback;
   }
 
-  function paneAllowsEdit(pane) {
-    const ext = pathSuffix(paneFilePath(pane));
+  function paneNow() {
+    const fromSlot = paneFromSlot();
+    if (fromSlot === false) return null;
+    if (fromSlot) return fromSlot;
+    anchored.doc = false;
+    return paneNowScan();
+  }
+
+  function paneAllowsEdit(cur) {
+    const ext = pathSuffix(paneFilePath(cur.pane, cur.abs));
     return ext === 'md' || ext === 'markdown';
   }
 
@@ -1107,7 +1214,7 @@ function enhanceStart() {
   function onEditClick() {
     const cur = paneNow();
     if (!cur) return;
-    if (paneAllowsEdit(cur.pane)) gotoSourceEdit();
+    if (paneAllowsEdit(cur)) gotoSourceEdit();
     else enterInplace();
   }
   function ipRenderGutter() {
@@ -1275,10 +1382,8 @@ function enhanceStart() {
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
   });
 
-  /* ---------------- 官方对比视图（changes-review）----------------
-     同一份工具条再加一处落点：官方「本轮改了哪些文件」的左右对比页。
-     搜索走 CSS Highlight，一次遍历两侧文本；字号给对比体内容区设 zoom，两侧一起变；
-     编辑只落在右侧（＝磁盘上的当前文件），左侧是这一轮的历史快照，永远只读。 */
+  /* 官方对比视图（changes-review）：工具条的第二处落点。搜索走 CSS Highlight 一次遍历两侧；
+     字号一个变量管两侧；编辑只落右侧（＝磁盘上的当前文件），左侧是本轮历史快照，永远只读。 */
   const RV_ZOOM_KEY = 'dsh-sidebar-plus.reviewZoom';
   let rvZoom = 1;
   try {
@@ -1315,14 +1420,30 @@ function enhanceStart() {
     rvMsgTimer = setTimeout(() => { rstatus.textContent = ''; }, 4000);
   }
 
-  /* 只在「可见且已画出对比体」的对比页上干活；一个页面上可能同时开着多个面板。 */
+  /* 只服务「可见且已画出对比体」的对比页：挂钩在位先认官方那一格，对不上再退回整页扫描。 */
+  function rvFromSlot() {
+    const s = slot.review;
+    if (!s || !s.el || !s.el.isConnected) return null;
+    try {
+      const root = s.el.closest('[data-changes-review]');
+      if (!root || isHiddenEl(root)) return null;
+      const body = root.querySelector('[data-review-view]');
+      if (!body) return null;
+      anchored.review = true;
+      return { root: root, body: body, via: 'slot' };
+    } catch (e) { return null; }
+  }
+
   function rvBodyNow() {
     if (typeof document === 'undefined') return null;
+    const viaSlot = rvFromSlot();
+    if (viaSlot) return viaSlot;
+    anchored.review = false;
     const list = document.querySelectorAll('[data-changes-review]');
     for (const el of list) {
       if (!el.isConnected || isHiddenEl(el)) continue;
       const body = el.querySelector('[data-review-view]');
-      if (body) return { root: el, body: body };
+      if (body) return { root: el, body: body, via: 'scan' };
     }
     return null;
   }
@@ -1523,7 +1644,7 @@ function enhanceStart() {
   }
   /* 对比页右侧＝磁盘上的当前文件；二进制文件（Office / 表格 / PDF…）不给「编辑右侧」。 */
   function rvBinaryNow() {
-    try { const caps = rvSource(); return !!(caps && caps.path && isBinaryPath(caps.path)); } catch (e) { return false; }
+    try { const caps = rvSource(); return !!(caps && caps.path && pathIsBinary(caps.path)); } catch (e) { return false; }
   }
   function rvSyncUi() {
     const on = rved.active;
@@ -1745,7 +1866,8 @@ function enhanceStart() {
     }
     const scope = cur.root.closest('[data-sidebar-right-session]');
     const fileEl = cur.root.querySelector('[data-review-file]');
-    const key = String(scope ? scope.getAttribute('data-sidebar-right-session') || '' : '') + '|' + String(fileEl ? fileEl.getAttribute('data-review-file') || '' : '');
+    /* 键里带上官方挂钩给的 actionUrl：换文件时它必变，比只靠 DOM 属性晚一拍稳。 */
+    const key = String(scope ? scope.getAttribute('data-sidebar-right-session') || '' : '') + '|' + String(fileEl ? fileEl.getAttribute('data-review-file') || '' : '') + '|' + (slot.review ? slot.review.url : '');
     if (rvKey !== key) {
       rvKey = key;
       if (rved.active) rvExitEdit(true);
@@ -1775,6 +1897,47 @@ function enhanceStart() {
   function sync() {
     syncDoc();
     syncReview();
+    retargetObserver();
+  }
+
+  /* 观察范围：挂钩在位时盯「右侧栏容器」，不是整页、也不只是单个面板 ——
+     只盯单个面板的话，新开对比页或切页签的变化发生在面板之外，要等兜底轮询才出工具条。
+     挂钩缺失时退回盯整页。 */
+  const anchorScopes = new WeakMap();
+  let anchorSeq = 0;
+  const scopeId = (el) => {
+    let id = anchorScopes.get(el);
+    if (id === undefined) { id = String(++anchorSeq); try { anchorScopes.set(el, id); } catch (e) { } }
+    return id;
+  };
+  const sidebarScope = (el) => {
+    try {
+      return el.closest('[data-sidebar-right-open]') || el.closest('[data-sidebar-right-session]') || el;
+    } catch (e) { return el; }
+  };
+
+  let observedKey = '';
+  function retargetObserver() {
+    let obs = null;
+    try { obs = observer; } catch (e) { return; }   // 观察者声明在后面，还没建好时先不动（TDZ 保护）
+    if (!obs) return;
+    const roots = [];
+    const push = (el) => { if (el && roots.indexOf(el) === -1) roots.push(el); };
+    if (anchored.doc && slot.doc && slot.doc.el) {
+      try { const p = slot.doc.el.closest('[data-document-preview]'); if (p) push(sidebarScope(p)); } catch (e) { }
+    }
+    if (anchored.review && slot.review && slot.review.el) {
+      try { const r = slot.review.el.closest('[data-changes-review]'); if (r) push(sidebarScope(r)); } catch (e) { }
+    }
+    let key = 'page';
+    if (roots.length) key = roots.map((el) => scopeId(el)).join('|');
+    if (key === observedKey) return;
+    observedKey = key;
+    try {
+      obs.disconnect();
+      for (const el of (roots.length ? roots : [document.documentElement])) obs.observe(el, { childList: true, subtree: true });
+      mark(roots.length ? 'observer-scoped' : 'observer-page');
+    } catch (e) { }
   }
 
   function syncDoc() {
@@ -1794,7 +1957,6 @@ function enhanceStart() {
     }
     attachedPane = cur.pane;
     findRow.style.display = (ff.open && !ip.active) ? 'flex' : 'none';
-    /* 行号只认官方纯文本正文自带的 data-textpreview-plain 标记（不猜渲染器 id）。 */
     const isPlain = !!cur.body.querySelector('[data-textpreview-plain]');
     linenoBtn.style.display = (isPlain && !ip.active) ? '' : 'none';
     setText(linenoBtn, '行号');
@@ -1865,7 +2027,6 @@ function enhanceStart() {
     } catch (err) { }
   };
   window.addEventListener('keydown', onKey, true);
-  /* 在对比页点任意一行：把那一行记成编辑起点（左栏的点击会映射到右栏同一行）。 */
   const onPick = function (e) {
     try {
       if (rved.active) return;
@@ -1882,12 +2043,11 @@ function enhanceStart() {
     document.addEventListener('wheel', onWheel, { passive: false });
   }
 
-  /* 挂载时机：MutationObserver 盯着 DOM，页面一变就同步（16 毫秒节流）；
-     另留慢速兜底轮询，防观察者失效导致工具条不出现。 */
+  /* 同步时机：MutationObserver 驱动（16 毫秒节流），另留慢速兜底轮询。 */
   let stopped = false;
   let syncScheduled = false;
   let lastSyncAt = 0;
-  const SYNC_MIN_GAP_MS = 16;   // 一帧的节流：连打 DOM 变化也不会把同步压到成灾
+  const SYNC_MIN_GAP_MS = 16;   // 一帧节流
   function scheduleSync() {
     if (stopped || syncScheduled) return;
     syncScheduled = true;
@@ -1906,8 +2066,31 @@ function enhanceStart() {
   sync();
   const timer = setInterval(sync, observer ? 1200 : 400);
   enh = {
+    /* 挂钩挂上／摘掉：由 Actions、ReviewActions 调用；信息没变不重复同步。 */
+    slotAttach(kind, el, info) {
+      if (kind !== 'doc' && kind !== 'review') return;
+      const cur = slot[kind];
+      const abs = (info && info.abs) || '';
+      const url = (info && info.url) || '';
+      if (cur && cur.el === el && cur.abs === abs && cur.url === url) return;
+      slot[kind] = { el: el, abs: abs, url: url };
+      mark('slot-' + kind + '-attached');
+      sync();
+    },
+    slotGone(kind, el) {
+      const cur = slot[kind];
+      if (!cur || cur.el !== el) return;
+      slot[kind] = null;
+      anchored[kind] = false;
+      mark('slot-' + kind + '-gone');
+      sync();
+    },
     stop() {
       stopped = true;
+      slot.doc = null;
+      slot.review = null;
+      anchored.doc = false;
+      anchored.review = false;
       if (observer) { try { observer.disconnect(); } catch (e) { } }
       clearInterval(timer);
       if (msgTimer) clearTimeout(msgTimer);
@@ -1950,6 +2133,8 @@ return {
   locale: { zh: zh, en: en },
   css: CSS,
   Body: SourceBody,
+  Actions: Actions,
+  ReviewActions: ReviewActions,
   teardown: function () {
     enhanceStop();
     try {
@@ -1959,6 +2144,10 @@ return {
   },
   _test: {
     VERSION: VERSION,
+    slot: slot,
+    anchored: anchored,
+    Actions: Actions,
+    ReviewActions: ReviewActions,
     parseFileAddress: parseFileAddress,
     sessionFileAddress: sessionFileAddress,
     splitLines: splitLines,
@@ -1977,6 +2166,8 @@ return {
     bytesOf: bytesOf,
     pathSuffix: pathSuffix,
     isBinaryPath: isBinaryPath,
+    officialBinary: officialBinary,
+    pathIsBinary: pathIsBinary,
     readWholeBytes: readWholeBytes,
     readWholeText: readWholeText,
   },

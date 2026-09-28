@@ -38,8 +38,8 @@ ok(api._test.ID === 'dsh-sidebar-plus/source' && api._test.NS === 'dshSidebarPlu
 
 // ---------- 浏览器业务：通过加载器的 compileBus 真编译 hot-client.cjs ----------
 const bus = api._test.compileBus(read('hot-client.cjs'), { react: stubReact, remote: null })
-ok(typeof bus.version === 'string' && bus.version === '0.4.1', '业务版本号', bus.version)
-ok(typeof bus.Body === 'function' && bus.title === '源编辑' && Array.isArray(bus.extensions), '业务契约字段齐全')
+ok(typeof bus.version === 'string' && bus.version === '0.4.2', '业务版本号', bus.version)
+ok(typeof bus.Body === 'function' && typeof bus.Actions === 'function' && typeof bus.ReviewActions === 'function' && bus.title === '源编辑' && Array.isArray(bus.extensions), '业务契约字段齐全（含两个官方插槽挂钩组件）')
 ok(bus.extensions.length === 2 && bus.extensions[0] === 'md' && bus.extensions[1] === 'markdown', '接管范围收窄到 md/markdown（其余格式保持官方视图、默认不被抢）', bus.extensions.join(','))
 ok(bus.meta && bus.meta.loading === 'text-pages' && bus.meta.wrap === true && bus.meta.priority === 'builtin', '业务 meta：文本分页+支持换行+builtin 档注册（官方视图保持默认，不抢）')
 ok(bus.locale && bus.locale.zh && bus.locale.en && typeof bus.css === 'string' && bus.css.includes('.dshsp-root'), '字典与样式随业务热载')
@@ -54,10 +54,10 @@ const T = bus._test
 {
   ok(T.isBinaryPath('a/report.docx') && T.isBinaryPath('x/DATA.XLSX') && T.isBinaryPath('b.pdf') && T.isBinaryPath('c.png'),
     '二进制后缀判据：Office / 表格 / PDF / 图片 命中（不接管）')
-  ok(T.isBinaryPath('c:\\work\\旧稿.PPTX') && T.isBinaryPath('z.docx '), '二进制后缀判据：反斜杠路径、大写、行尾空格也命中')
+  ok(T.isBinaryPath('z:\\dir\\old.PPTX') && T.isBinaryPath('z.docx '), '二进制后缀判据：反斜杠路径、大写、行尾空格也命中')
   ok(!T.isBinaryPath('a.md') && !T.isBinaryPath('a.csv') && !T.isBinaryPath('a.tsv') && !T.isBinaryPath('a.svg') && !T.isBinaryPath('a.json') && !T.isBinaryPath('noext'),
     '文本后缀 / 无后缀不命中（继续按文本处理，能力不缩水）')
-  ok(T.pathSuffix('C:\\x\\y.MD') === 'md' && T.pathSuffix('') === '' && T.pathSuffix(null) === '', '后缀提取：反斜杠、大写、空值')
+  ok(T.pathSuffix('Z:\\x\\y.MD') === 'md' && T.pathSuffix('') === '' && T.pathSuffix(null) === '', '后缀提取：反斜杠、大写、空值')
 }
 
 // parseFileAddress
@@ -66,8 +66,8 @@ const T = bus._test
   ok(p && p.scope === 'session' && p.sessionId === 'session-abc123' && p.path === '笔记/2026-01-01.md', 'session 地址：会话+百分号编码路径解码')
   const q = T.parseFileAddress('dsh-resource://file/session/s1/a/my%20file.txt?x=1#frag')
   ok(q && q.path === 'a/my file.txt', 'session 地址：? # 后缀截断、空格解码')
-  const a = T.parseFileAddress('dsh-resource://file/absolute/F%3A/tmp/x.md')
-  ok(a && a.scope === 'absolute' && a.path === 'F:/tmp/x.md', 'absolute 地址能解析')
+  const a = T.parseFileAddress('dsh-resource://file/absolute/Z%3A/tmp/x.md')
+  ok(a && a.scope === 'absolute' && a.path === 'Z:/tmp/x.md', 'absolute 地址能解析')
   ok(T.parseFileAddress('https://example.com') === undefined, '非 file 地址拒绝')
   ok(T.parseFileAddress('dsh-resource://file/') === undefined, '残缺地址拒绝')
   ok(T.parseFileAddress('dsh-resource://file/session/onlysid') === undefined, '无路径段拒绝')
@@ -149,7 +149,7 @@ const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sp-home-'))
 process.env.DSH_HOME = tmpHome
 const host = await import(pathToFileURL(path.join(root, 'lib', 'index.js')).href)
 const H2 = host._test
-ok(H2.LOADER_VERSION === '0.4.1', '宿主加载器版本')
+ok(H2.LOADER_VERSION === '0.4.2', '宿主加载器版本')
 ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT), '热件路径指到插件根目录')
 // 版本号散在四处，发版时漏一处就会「版本静默不一致」——这里钉死
 {
@@ -174,7 +174,7 @@ ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT),
 
 // ---------- 宿主业务：用加载器的 loadHostBus 真装载 hot-host.cjs ----------
 const hbus = H2.loadHostBus(H2.HOT_HOST)
-ok(hbus.version === '0.4.1' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
+ok(hbus.version === '0.4.2' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
 {
   const N = (s) => ({ get: (k) => (k === 'abs' ? s : null) })
   ok(hbus.handlers.stat(N('relative/a.md')).body.ok === false, 'stat 拒相对路径')

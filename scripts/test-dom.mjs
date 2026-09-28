@@ -59,7 +59,7 @@ const fetchCalls = []
 let saveResponse = () => ({ ok: true, mtimeMs: 2000, bytes: MD.length + 20, backup: null })
 const HOT_CLIENT_SRC = fs.readFileSync(path.join(root, 'hot-client.cjs'), 'utf8')
 // 假路径拼接构造：别让查引用扫描器把字面量当真引用登记
-const FAKE_ABS = ['F:', '', 'fake', 'sb.md'].join(path.sep)
+const FAKE_ABS = ['Z:', '', 'fake', 'sb.md'].join(path.sep)
 win.fetch = async (url, init) => {
   const u = String(url)
   fetchCalls.push({ url: u, init })
@@ -92,8 +92,9 @@ const ENV_REMOTE = {
     },
   },
 }
-const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE })
-ok(bus.version === '0.4.1', '业务经 compileBus 就绪', bus.version)
+const ENV_PREVIEWS = { value: null }   // 照加载器的活引用形状：业务件按引用读，测试可随时换桩
+const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE, previews: ENV_PREVIEWS })
+ok(bus.version === '0.4.2', '业务经 compileBus 就绪', bus.version)
 const b1 = bus._test.bytesOf(MD_BYTES)
 const b2 = bus._test.bytesOf(MD_B64)
 const b3 = bus._test.bytesOf(MD_BYTES.buffer)
@@ -122,7 +123,7 @@ ok(q('[data-textpreview-line="1"]') && q('[data-textpreview-line="5"]'), '5 行�
 ok(q('[data-textpreview-line="1"] .dshsp-ln').textContent === '1', '行号列文字正确')
 ok(q('[data-textpreview-line="1"]').className.includes('dshsp-h1'), '标题行有着色类')
 ok(q('.dshsp-b') && q('.dshsp-task'), '加粗/任务着色在位')
-ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.1', '业务版本标记在 DOM 上（热替换观测点）')
+ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.2', '业务版本标记在 DOM 上（热替换观测点）')
 const btns = () => [...qa('.dshsp-bar button')]
 ok(btns().some((b) => b.textContent.includes('编辑')), '工具栏有「编辑」按钮（无 t 时走中文兜底字典）')
 
@@ -627,6 +628,195 @@ await act(async () => root_.unmount())
     c2.remove()
   }
 
+  // ================= 4.9) 官方插槽挂钩：面板与路径由官方递来，官方说了不接管就不扫页面，挂钩掉了退回扫描 =================
+  {
+    const DOC9 = '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/'
+    const mk9 = (id, file, inner) => {
+      const p = win.document.createElement('div')
+      p.setAttribute('data-document-preview', id)
+      if (file) p.setAttribute('data-textpreview-url', 'dsh-resource://file/session/s1/out/' + file)
+      const b = win.document.createElement('div')
+      b.setAttribute('data-textpreview-body', 'true')
+      b.innerHTML = inner || ''
+      p.appendChild(b)
+      return { p, b }
+    }
+    const settle9 = async (ms) => { await act(async () => { await new Promise((r) => setTimeout(r, ms || 250)) }) }
+    const group9 = (p) => p.querySelector(':scope > .dshsp-ogroup')
+    // 官方那一格长在面板头部里：把组件挂进面板，等价于真实渲染位置
+    const mount9 = async (pane, hookProps) => {
+      const cell = win.document.createElement('div')
+      pane.insertBefore(cell, pane.firstChild)
+      const r = ReactDOMClient.createRoot(cell)
+      await act(async () => { r.render(React.createElement(bus.Actions, hookProps)) })
+      await settle9()
+      return { cell, root: r }
+    }
+
+    // ① 面板里没有任何路径线索，路径全靠官方 props 递来
+    const a = mk9('official/plain', null, '<div data-textpreview-plain="true"><div data-textpreview-line="1">正文</div></div>')
+    win.document.body.appendChild(a.p)
+    const ha = await mount9(a.p, { absolutePath: 'Z:\\fake\\note.md' })
+    ok(!!group9(a.p), '挂钩在位：官方那一格所在的面板拿到工具条')
+    ok(bus._test.anchored.doc === true, '挂钩在位：走官方挂钩，不再整页扫描')
+    await act(async () => { ha.root.unmount() })
+    a.p.remove(); await settle9(200)
+
+    // ② 官方 props 说是 PDF：整块不接管，而且不跑去接管旁边那个可见面板（这就是「不可能挂错」）
+    //    b 的面板线索故意做成「扫描本来就会跳过」的样子，好让 ③ 的归属唯一
+    const b = mk9(DOC9 + 'office', 'note.docx', '<div data-pdf-preview="1"></div>')
+    const c = mk9('official/plain', 'other.md', '<div data-textpreview-plain="true"><div data-textpreview-line="1">另一个</div></div>')
+    win.document.body.appendChild(b.p)
+    win.document.body.appendChild(c.p)
+    const hb = await mount9(b.p, { absolutePath: 'Z:\\fake\\deck.pdf' })
+    ok(!group9(b.p), '官方 props 说是 PDF：这个面板不接管（以官方递来的路径为准）')
+    ok(!group9(c.p) && bus._test.anchored.doc === true, '官方已表态当前文件是二进制：不接管，也不去接管旁边那个可见面板')
+
+    // ③ 拔掉挂钩（官方没有该插槽 / 改了名 / 页签回收）→ 自动退回整页扫描，工具条不消失
+    await act(async () => { hb.root.unmount() })
+    await settle9(400)
+    ok(!!group9(c.p) && bus._test.anchored.doc === false, '挂钩拔掉：自动退回整页扫描，工具条照常出现（安全网）')
+
+    // 对比页：两个对比页同时在 DOM 里，只服务官方那一格所在的那一个
+    const rvmk = (name) => {
+      const scope = win.document.createElement('div')
+      scope.setAttribute('data-sidebar-right-session', 's1')
+      const root = win.document.createElement('div')
+      root.setAttribute('data-changes-review', '1')
+      const head = win.document.createElement('div')
+      const cell = win.document.createElement('div')
+      const fe = win.document.createElement('button')
+      fe.setAttribute('data-review-file', name)
+      head.appendChild(fe); head.appendChild(cell)
+      root.appendChild(head)
+      const body = win.document.createElement('div')
+      body.setAttribute('data-review-view', 'unified')
+      body.innerHTML = '<div data-diff-side="left"><div data-diff-line="1">旧</div></div><div data-diff-side="right"><div data-diff-line="1">新</div></div>'
+      root.appendChild(body)
+      scope.appendChild(root)
+      return { scope, root, cell, body }
+    }
+    const rv1 = rvmk('out/one.md')
+    const rv2 = rvmk('out/two.md')
+    win.document.body.appendChild(rv1.scope)
+    win.document.body.appendChild(rv2.scope)
+    await settle9(400)
+    const hr = ReactDOMClient.createRoot(rv2.cell)
+    await act(async () => { hr.render(React.createElement(bus.ReviewActions, { actionUrl: 'dsh-resource://file/session/s1/out/two.md' })) })
+    await settle9()
+    ok(!!rv2.root.querySelector(':scope > .dshsp-ogroup'), '对比页挂钩在位：工具条落在官方那一格所在的对比页')
+    ok(!rv1.root.querySelector(':scope > .dshsp-ogroup'), '对比页挂钩在位：另一个对比页不跟着抢（两个同开也只服务挂钩那一个）')
+    await act(async () => { hr.unmount() })
+    await settle9(400)
+    b.p.remove(); c.p.remove(); rv1.scope.remove(); rv2.scope.remove()
+    await settle9(200)
+    ok(!win.document.querySelector('.dshsp-ogroup'), '挂钩全部撤走：页面上不留任何插件工具条（不留野节点）')
+  }
+
+  // ================= 4.10) 二进制判据走官方注册表：新格式自动跟上，内置清单降为兜底 =================
+  {
+    const settle10 = async (ms) => { await act(async () => { await new Promise((r) => setTimeout(r, ms || 250)) }) }
+    const group10 = (p) => p.querySelector(':scope > .dshsp-ogroup')
+    const mk10 = (id, file) => {
+      const p = win.document.createElement('div')
+      p.setAttribute('data-document-preview', id)
+      p.setAttribute('data-textpreview-url', 'dsh-resource://file/session/s1/out/' + file)
+      const b = win.document.createElement('div')
+      b.setAttribute('data-textpreview-body', 'true')
+      p.appendChild(b)
+      return p
+    }
+    const DOC10 = '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/'
+    // 照官方 DocumentPreviewRegistry 的真实形状打桩：getSnapshot() 返回定义数组，binaryExtensions ⊆ extensions
+    const registry = {
+      getSnapshot: () => ([
+        { id: 'office', extensions: ['doc', 'docx', 'epub'], binaryExtensions: ['doc', 'docx', 'epub'], loading: 'renderer', priority: 'builtin' },
+        { id: 'text', extensions: ['md', 'txt'], binaryExtensions: [], loading: 'text-pages', priority: 'builtin' },
+      ]),
+    }
+    ENV_PREVIEWS.value = registry
+    ok(bus._test.officialBinary('Z:\\a\\新格式.epub') === true, '官方注册表声明 epub 是二进制：判据自动跟上（内置清单里并没有 epub）')
+    ok(bus._test.officialBinary('Z:\\a\\note.md') === false, '官方注册表说 md 不是二进制：照旧当文本处理')
+    ok(bus._test.pathIsBinary('Z:\\a\\pkg.zip') === true, '官方名单没这个后缀、内置清单有 → 仍按二进制处理（兜底没丢）')
+    ENV_PREVIEWS.value = null
+    ok(bus._test.officialBinary('Z:\\a\\x.epub') === null, '拿不到官方服务：officialBinary 返回 null（不硬猜）')
+    ok(bus._test.pathIsBinary('Z:\\a\\report.docx') === true, '拿不到官方服务：完全走内置清单，行为与 0.4.1 一致')
+
+    const p10 = mk10(DOC10 + 'office', 'book.epub')
+    win.document.body.appendChild(p10)
+    ENV_PREVIEWS.value = registry
+    await settle10(400)
+    ok(!group10(p10), '端到端：epub 只写在官方注册表里也不挂工具条（新增格式不用改代码）')
+    ENV_PREVIEWS.value = null
+    // 换判据本身不动 DOM，要靠下一次同步：稳态轮询是 1.2 秒，这里等够 1.4 秒
+    await settle10(1400)
+    ok(!!group10(p10), '端到端：官方服务撤走就退回内置清单（epub 不在名单里 → 照常接管，不因换判据而失联）')
+    p10.remove()
+    await settle10(200)
+  }
+
+  // ================= 4.11) 观察范围回归锁：盯右侧栏容器（不是单个面板，也不是整页） =================
+  {
+    const settle11 = async (ms) => { await act(async () => { await new Promise((r) => setTimeout(r, ms || 250)) }) }
+    const sidebar = win.document.createElement('div')
+    sidebar.setAttribute('data-sidebar-right-open', '1')
+    sidebar.setAttribute('data-sidebar-right-session', 's1')
+    win.document.body.appendChild(sidebar)
+
+    const docPane = win.document.createElement('div')
+    docPane.setAttribute('data-document-preview', 'official/plain')
+    docPane.setAttribute('data-textpreview-url', 'dsh-resource://file/session/s1/out/a.md')
+    const db = win.document.createElement('div')
+    db.setAttribute('data-textpreview-body', 'true')
+    docPane.appendChild(db)
+    const cell11 = win.document.createElement('div')
+    docPane.insertBefore(cell11, docPane.firstChild)
+    sidebar.appendChild(docPane)
+
+    // 记录 observe() 的目标，证明盯的是容器而不是单个面板
+    const seen = []
+    const MO = win.MutationObserver
+    let spied = false
+    if (MO && MO.prototype && MO.prototype.observe && !MO.prototype.__dshspSpied) {
+      const orig = MO.prototype.observe
+      MO.prototype.observe = function (el, opt) { seen.push(el); return orig.call(this, el, opt) }
+      MO.prototype.__dshspSpied = true
+      spied = true
+    }
+
+    const r11 = ReactDOMClient.createRoot(cell11)
+    await act(async () => { r11.render(React.createElement(bus.Actions, { absolutePath: 'Z:\\fake\\a.md' })) })
+    await settle11(250)
+    ok(!!docPane.querySelector(':scope > .dshsp-ogroup'), '4.11 前提：文档挂钩在位，工具条已在位')
+    if (spied) {
+      ok(seen.some((el) => el && el.getAttribute && el.getAttribute('data-sidebar-right-open') === '1'),
+        '观察目标 = 右侧栏容器（不是单个面板，也不是整页）')
+    } else {
+      ok(true, '观察目标断言跳过：本环境 MutationObserver.prototype 不可包装')
+    }
+
+    // 新开对比页：它在文档面板之外、只在容器之内 → 必须靠观察者即时捕捉，不能退化成等 1.2 秒轮询
+    const rvRoot = win.document.createElement('div')
+    rvRoot.setAttribute('data-changes-review', '1')
+    const rvHead = win.document.createElement('div')
+    const rvFile = win.document.createElement('button')
+    rvFile.setAttribute('data-review-file', 'out/b.md')
+    rvHead.appendChild(rvFile)
+    rvRoot.appendChild(rvHead)
+    const rvBody = win.document.createElement('div')
+    rvBody.setAttribute('data-review-view', 'split')
+    rvBody.innerHTML = '<div data-diff-side="left"><div data-diff-line="1">旧</div></div><div data-diff-side="right"><div data-diff-line="1">新</div></div>'
+    rvRoot.appendChild(rvBody)
+    sidebar.appendChild(rvRoot)
+    await settle11(300)
+    ok(!!rvRoot.querySelector(':scope > .dshsp-ogroup'), '新开对比页 300 毫秒内就出工具条（观察范围盖得住面板之外的变化）')
+
+    await act(async () => { r11.unmount() })
+    sidebar.remove()
+    await settle11(200)
+    ok(!win.document.querySelector('.dshsp-ogroup'), '4.11 收尾：不留野节点')
+  }
+
   await act(async () => { bus.teardown() })
   ok(!win.document.querySelector('.dshsp-ogroup'), 'teardown 后增强层工具条回收（含对比页）')
   pane.remove()
@@ -635,10 +825,16 @@ await act(async () => root_.unmount())
 // ================= 5) 加载器 apply：注册 + 热装载 + 回收 =================
 {
   const effectDisposers = []
-  const reg = { slotKey: null, Shell: null, def: null, defDisposed: false, slotDisposed: false, localeNs: null }
+  const reg = { body: null, hooks: [], def: null, defDisposed: false, slotDisposed: false, localeNs: null }
   const slotsStub = {
-    inject: (name, cb) => { cb(); return () => { reg.slotDisposed = true } },
-    register: (opts, Comp) => { reg.slotKey = opts.key; reg.Shell = Comp; return () => {} },
+    // 照官方口径写桩：inject(插槽名, 注册回调)；回调里 register({name, keyed 用 key / 列表用 id, ...}, 组件)；两层各返回一个回收函数
+    inject: (name, cb) => { cb(name); return () => { reg.slotDisposed = true } },
+    register: (opts, Comp) => {
+      const rec = { name: opts.name, cell: opts.key || opts.id, Comp: Comp }
+      if (opts.name === 'sidebar.right.tab.document') reg.body = rec
+      else reg.hooks.push(rec)
+      return () => { }
+    },
   }
   const localeStub = {
     register: (ns) => { reg.localeNs = ns; return () => {} },
@@ -657,8 +853,24 @@ await act(async () => root_.unmount())
   await act(async () => { await new Promise((r) => setTimeout(r, 300)) })
   ok(reg.def && reg.def.id === api._test.ID && reg.def.extensions.includes('md') && reg.def.loading === 'text-pages', '加载器注册渲染器（md 家族、text-pages）')
   ok(Array.isArray(reg.def.extensions) && reg.def.extensions.length === 2 && reg.def.extensions[0] === 'md', '扩展名单是活数组且已收窄到 md/markdown（其余格式保持官方视图）', String(reg.def.extensions.length))
-  ok(reg.slotKey === api._test.ID && reg.Shell === api._test.Shell, '空壳组件挂上文档插槽')
-  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.1', '首轮 tick 已完成业务热装载')
+  ok(reg.body && reg.body.cell === api._test.ID && reg.body.Comp === api._test.Shell, '空壳组件挂上文档正文插槽（keyed 插槽用 key）')
+  const hDoc = reg.hooks.find((h) => h.name === 'sidebar.right.tab.document.actions')
+  const hRv = reg.hooks.find((h) => h.name === 'deliverables.review.file.actions')
+  ok(reg.hooks.length === 2 && !!hDoc && !!hRv, '两个官方挂钩插槽都注册上了')
+  ok(!!hDoc && hDoc.cell === 'dsh-sidebar-plus/toolbar' && typeof hDoc.Comp === 'function', '文档工具条挂钩注册进官方 .actions（列表插槽用 id，不撞官方 open-in-app）')
+  ok(!!hRv && hRv.cell === 'dsh-sidebar-plus/review-toolbar', '对比页挂钩注册进官方 review 文件操作插槽')
+  {
+    const host = win.document.createElement('div')
+    win.document.body.appendChild(host)
+    const r9 = ReactDOMClient.createRoot(host)
+    await act(async () => { r9.render(React.createElement(hDoc.Comp, { absolutePath: 'Z:\\fake\\x.txt' })) })
+    const sp = host.querySelector('span.dshsp-slot[data-dshsp-slot="actions"]')
+    ok(!!sp && sp.getAttribute('data-dshsp-abs') === 'Z:\\fake\\x.txt', '加载器壳 → 业务挂钩：官方递来的绝对路径原样落到挂钩节点')
+    ok(!!sp && sp.hasAttribute('hidden'), '挂钩节点本身不显示任何东西（画面仍是原来那一行工具条）')
+    await act(async () => { r9.unmount() })
+    host.remove()
+  }
+  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.2', '首轮 tick 已完成业务热装载')
   ok(!!win.document.querySelector('style[data-plugin-css="dsh-sidebar-plus"]'), '样式由业务 css 注入')
   for (const fn of effectDisposers) { try { const inner = fn(); if (typeof inner === 'function') inner() } catch (e) { /* ignore */ } }
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })

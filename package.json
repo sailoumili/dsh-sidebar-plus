@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-plus",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Sidebar file-view enhancement for DSH (zero official-file changes, hot-pluggable): a Source view for .md/.markdown — line numbers, in-file search, direct edit & save (auto backup + overwrite protection), adjustable font size; find/zoom/in-place editing on the official previews; and a toolbar on the official side-by-side comparison view (one-side or both-side search, font size for both sides at once, right-side-only editing). 中文 README 见 README.md / English: README.en.md",
   "author": "sailoumili",
   "keywords": [
@@ -33,6 +33,9 @@
     "url": "https://github.com/sailoumili/dsh-sidebar-plus/issues"
   },
   "type": "module",
+  "scripts": {
+    "test": "node scripts/test.mjs"
+  },
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
