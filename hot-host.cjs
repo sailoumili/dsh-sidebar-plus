@@ -1,5 +1,5 @@
 'use strict';
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 
 const MAX_TEXT_BYTES = 32 * 1024 * 1024;
 const KEEP_PER_BASENAME = 20;

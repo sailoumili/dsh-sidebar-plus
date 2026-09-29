@@ -94,7 +94,7 @@ const ENV_REMOTE = {
 }
 const ENV_PREVIEWS = { value: null }   // 照加载器的活引用形状：业务件按引用读，测试可随时换桩
 const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE, previews: ENV_PREVIEWS })
-ok(bus.version === '0.4.2', '业务经 compileBus 就绪', bus.version)
+ok(bus.version === '0.4.3', '业务经 compileBus 就绪', bus.version)
 const b1 = bus._test.bytesOf(MD_BYTES)
 const b2 = bus._test.bytesOf(MD_B64)
 const b3 = bus._test.bytesOf(MD_BYTES.buffer)
@@ -104,6 +104,15 @@ ok(b1 === MD_BYTES, 'bytesOf: 新版 Uint8Array 直接可用（不解 base64）'
 ok(dec(b2) === MD, 'bytesOf: 旧版 base64 仍能兜底解出')
 ok(dec(b3) === MD, 'bytesOf: ArrayBuffer 也能解')
 ok(dec(b4) === MD, 'bytesOf: 其它 TypedArray 也能解（跨 realm 不靠 instanceof）')
+
+// 工具条文字跟随界面语言（官方把当前语言写在 <html lang>）
+{
+  win.document.documentElement.lang = 'en';
+  ok(bus._test.tr('bar.edit') === 'Edit' && bus._test.tr('bar.save') === 'Save' && bus._test.tr('rv.edit') === 'Edit right', '英文界面：按钮文字取英文');
+  win.document.documentElement.lang = 'zh-CN';
+  ok(bus._test.tr('bar.edit') === '编辑' && bus._test.tr('bar.save') === '保存' && bus._test.tr('rv.edit') === '编辑右侧', '中文界面：按钮文字取中文');
+  win.document.documentElement.lang = '';
+}
 
 const container = win.document.getElementById('root')
 const props = {
@@ -123,9 +132,19 @@ ok(q('[data-textpreview-line="1"]') && q('[data-textpreview-line="5"]'), '5 行�
 ok(q('[data-textpreview-line="1"] .dshsp-ln').textContent === '1', '行号列文字正确')
 ok(q('[data-textpreview-line="1"]').className.includes('dshsp-h1'), '标题行有着色类')
 ok(q('.dshsp-b') && q('.dshsp-task'), '加粗/任务着色在位')
-ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.2', '业务版本标记在 DOM 上（热替换观测点）')
+ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.3', '业务版本标记在 DOM 上（热替换观测点）')
 const btns = () => [...qa('.dshsp-bar button')]
 ok(btns().some((b) => b.textContent.includes('编辑')), '工具栏有「编辑」按钮（无 t 时走中文兜底字典）')
+{
+  win.document.documentElement.lang = 'en';
+  await act(async () => { root_.render(React.createElement(bus.Body, props)) });
+  ok(btns().some((b) => b.textContent.trim() === 'Edit') && btns().some((b) => b.textContent.trim() === 'Find'), '英文界面渲染：工具条按钮显示英文');
+  win.document.documentElement.lang = 'zh-CN';
+  await act(async () => { root_.render(React.createElement(bus.Body, props)) });
+  ok(btns().some((b) => b.textContent.trim() === '编辑') && btns().some((b) => b.textContent.trim() === '搜索'), '切回中文渲染：按钮恢复中文');
+  win.document.documentElement.lang = '';
+  await act(async () => { root_.render(React.createElement(bus.Body, props)) });
+}
 
 function patchVisible(sel) {
   const el = container.querySelector(sel)
@@ -870,7 +889,7 @@ await act(async () => root_.unmount())
     await act(async () => { r9.unmount() })
     host.remove()
   }
-  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.2', '首轮 tick 已完成业务热装载')
+  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.3', '首轮 tick 已完成业务热装载')
   ok(!!win.document.querySelector('style[data-plugin-css="dsh-sidebar-plus"]'), '样式由业务 css 注入')
   for (const fn of effectDisposers) { try { const inner = fn(); if (typeof inner === 'function') inner() } catch (e) { /* ignore */ } }
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })

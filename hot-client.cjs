@@ -1,6 +1,6 @@
 'use strict';
 const react = ENV.react;
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 
 const zh = {
   'viewer.label': '源编辑',
@@ -24,6 +24,32 @@ const zh = {
   'rv.find.holder': '搜索（两侧一起搜；可用「左/右」只搜一侧。↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）',
   'rv.editing': '编辑中：只改右侧的当前文件，左侧只读；Ctrl+S 保存，Esc 退出',
   'rv.saved': '已保存；左侧对比是这一轮的历史快照，不会随之更新',
+  'bar.edit.tip': '编辑（md 跳到源编辑，其它格式就在本视图里编辑）',
+  'bar.find.tip': '搜索（Ctrl+F）',
+  'bar.save.tip': '保存（Ctrl+S）',
+  'bar.exit.tip': '退出编辑（Esc）',
+  'bar.forcedit.tip': '磁盘上这份已变，强制覆盖',
+  'bar.reload.tip': '丢掉本地改动，重读磁盘最新',
+  'bar.lineno': '行号',
+  'bar.lineno.tip': '显示/隐藏行号（仅官方纯文本视图，默认关）',
+  'font.reset.official': '点击恢复官方默认字号',
+  'jump.row': '行',
+  'jump.go': '跳',
+  'jump.go.tip': '跳到该行',
+  'jump.holder': '跳行',
+  'jump.tip': '输入行号后回车：光标跳到那一行',
+  'find.holder': '搜索（↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）',
+  'find.case': '区分大小写',
+  'find.prev': '上一个（↑）',
+  'find.next': '下一个（↓）',
+  'find.close': '关闭（Esc）',
+  'rv.edit': '编辑右侧',
+  'rv.side.both': '两侧',
+  'rv.side.both.tip': '左右两侧一起搜',
+  'rv.side.left': '左',
+  'rv.side.left.tip': '只搜左侧（本轮开始的历史快照），上下箭头只在左侧走',
+  'rv.side.right': '右',
+  'rv.side.right.tip': '只搜右侧（当前文件），上下箭头只在右侧走',
 };
 const en = {
   'viewer.label': 'Source',
@@ -47,7 +73,50 @@ const en = {
   'rv.find.holder': 'Find in both sides, or use 左/右 for one (Enter/↓ next, ↑ previous, Esc close)',
   'rv.editing': 'Editing the right side only; the left side is read-only. Ctrl+S saves, Esc exits',
   'rv.saved': 'Saved; the left comparison is this turn\'s snapshot and does not change',
+  'bar.edit.tip': 'Edit (md opens the Source view; other formats edit in place)',
+  'bar.find.tip': 'Find (Ctrl+F)',
+  'bar.save.tip': 'Save (Ctrl+S)',
+  'bar.exit.tip': 'Exit editing (Esc)',
+  'bar.forcedit.tip': 'The file changed on disk; overwrite anyway',
+  'bar.reload.tip': 'Discard local edits and reload from disk',
+  'bar.lineno': 'Lines',
+  'bar.lineno.tip': 'Show/hide line numbers (official plain-text view only, off by default)',
+  'font.reset.official': 'Click to restore the official default size',
+  'jump.row': 'Ln',
+  'jump.go': 'Go',
+  'jump.go.tip': 'Jump to that line',
+  'jump.holder': 'Line',
+  'jump.tip': 'Type a line number and press Enter to jump there',
+  'find.holder': 'Find (Enter/↓ next, ↑ previous, Esc close)',
+  'find.case': 'Match case',
+  'find.prev': 'Previous (↑)',
+  'find.next': 'Next (↓)',
+  'find.close': 'Close (Esc)',
+  'rv.edit': 'Edit right',
+  'rv.side.both': 'Both',
+  'rv.side.both.tip': 'Search both sides',
+  'rv.side.left': 'Left',
+  'rv.side.left.tip': 'Left side only (this turn\'s snapshot); ↑/↓ walk the left side',
+  'rv.side.right': 'Right',
+  'rv.side.right.tip': 'Right side only (the current file); ↑/↓ walk the right side',
 };
+
+/* 界面语言跟随 DSH：官方 locale 把当前语言写在 <html lang>（zh 显示为 zh-CN）。
+   React 那条路优先用官方传入的 props.t；命令式工具条没有 props.t，按 <html lang> 挑字典。 */
+function uiIsEn() {
+  try {
+    const l = (typeof document !== 'undefined' && document.documentElement) ? String(document.documentElement.lang || '') : '';
+    return /^en\b/i.test(l);
+  } catch (e) { return false; }
+}
+function dict() { return uiIsEn() ? en : zh; }
+function tr(key, fallback) {
+  const d = dict();
+  if (d[key] != null) return d[key];
+  if (zh[key] != null) return zh[key];
+  if (en[key] != null) return en[key];
+  return fallback != null ? fallback : key;
+}
 
 let sharedFontPx = 14;
 try {
@@ -526,7 +595,7 @@ function SourceBody(props) {
   const t = typeof props.t === 'function' ? props.t : null;
   const label = function (key) {
     try { if (t) { const v = t(key); if (typeof v === 'string' && v) return v; } } catch (e) {  }
-    return (zh[key] != null ? zh[key] : (en[key] != null ? en[key] : key));
+    return tr(key);
   };
 
   const [mode, setMode] = useState('view');
@@ -845,7 +914,7 @@ function SourceBody(props) {
               ref: inputEl,
               type: 'text',
               value: find.q,
-              placeholder: '搜索（↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）',
+              placeholder: tr('find.holder'),
               onChange: (e) => setFind((f) => Object.assign({}, f, { q: e.target.value, idx: 0 })),
               onKeyDown: (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
@@ -855,10 +924,10 @@ function SourceBody(props) {
               },
             }),
             h('span', { className: 'dshsp-count' }, find.q ? (matches.length ? (safeIdx + 1) + ' / ' + matches.length : label('finding.no')) : ''),
-            h('button', { className: 'dshsp-btn', type: 'button', title: '区分大小写', onClick: () => setFind((f) => Object.assign({}, f, { cs: !f.cs, idx: 0 })) }, 'Aa' + (find.cs ? '✓' : '')),
-            h('button', { className: 'dshsp-btn', type: 'button', title: '上一个 (↑)', onClick: () => step(-1) }, '↑'),
-            h('button', { className: 'dshsp-btn', type: 'button', title: '下一个 (↓)', onClick: () => step(1) }, '↓'),
-            h('button', { className: 'dshsp-btn', type: 'button', title: '关闭 (Esc)', onClick: closeFind }, '✕')
+            h('button', { className: 'dshsp-btn', type: 'button', title: tr('find.case'), onClick: () => setFind((f) => Object.assign({}, f, { cs: !f.cs, idx: 0 })) }, 'Aa' + (find.cs ? '✓' : '')),
+            h('button', { className: 'dshsp-btn', type: 'button', title: tr('find.prev'), onClick: () => step(-1) }, '↑'),
+            h('button', { className: 'dshsp-btn', type: 'button', title: tr('find.next'), onClick: () => step(1) }, '↓'),
+            h('button', { className: 'dshsp-btn', type: 'button', title: tr('find.close'), onClick: closeFind }, '✕')
           )
         : null,
       h('div', {
@@ -1023,12 +1092,12 @@ function enhanceStart() {
     box.style.display = 'none';
     const lab = document.createElement('span');
     lab.className = 'dshsp-jlabel';
-    lab.textContent = '行';
+    lab.textContent = tr('jump.row');
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.className = 'dshsp-jump';
-    inp.placeholder = '跳行';
-    inp.title = '输入行号后回车：光标跳到那一行';
+    inp.placeholder = tr('jump.holder');
+    inp.title = tr('jump.tip');
     const go = function () {
       const ta = getTa();
       const n = parseInt(inp.value, 10);
@@ -1043,7 +1112,7 @@ function enhanceStart() {
     });
     box.appendChild(lab);
     box.appendChild(inp);
-    box.appendChild(mkBtn('跳', '跳到该行', go));
+    box.appendChild(mkBtn(tr('jump.go'), tr('jump.go.tip'), go));
     return { box: box, input: inp };
   }
 
@@ -1128,11 +1197,11 @@ function enhanceStart() {
 
   const input = document.createElement('input');
   input.type = 'text';
-  input.placeholder = '搜索（↓/Enter 下一个，↑/Shift+Enter 上一个，Esc 关闭）';
+  input.placeholder = tr('find.holder');
   const count = document.createElement('span');
   count.className = 'dshsp-count';
   function renderFf() {
-    count.textContent = ff.q ? (ff.ranges.length ? (ff.idx + 1) + ' / ' + ff.ranges.length : '无匹配') : '';
+    count.textContent = ff.q ? (ff.ranges.length ? (ff.idx + 1) + ' / ' + ff.ranges.length : tr('finding.no')) : '';
   }
   function runFf() {
     const cur = paneNow();
@@ -1169,7 +1238,7 @@ function enhanceStart() {
       menuBtn.click();
       await sleep(250);
       const item = [...document.querySelectorAll('button,[role="menuitem"],[role="option"]')]
-        .find((el) => ((el.textContent || '').trim() === TITLE) && el !== menuBtn && !(el.closest && el.closest('[data-dshsp-official]')));
+        .find((el) => (((el.textContent || '').trim() === TITLE || (el.textContent || '').trim() === en['viewer.label']) && el !== menuBtn && !(el.closest && el.closest('[data-dshsp-official]'))));
       if (!item) { barFlash('请先切到「源编辑」视图'); return; }
       pendingEdit = true;
       item.click();
@@ -1233,7 +1302,7 @@ function enhanceStart() {
     editBtn.style.display = on ? 'none' : '';
     findBtn.style.display = on ? 'none' : '';
     ipJump.box.style.display = on ? '' : 'none';
-    setText(saveBtn, '保存' + (ip.dirty ? ' *' : ''));
+    setText(saveBtn, tr('bar.save') + (ip.dirty ? ' *' : ''));
     if (on && ip.ta) {
       const px = Math.max(10, Math.round(basePx() * officialZoom));
       ip.ta.style.fontSize = px + 'px';
@@ -1335,22 +1404,22 @@ function enhanceStart() {
     }
   }
 
-  const editBtn = mkBtn('编辑', '编辑（md 跳到源编辑，其它格式就在本视图里编辑）', onEditClick);
+  const editBtn = mkBtn(tr('bar.edit'), tr('bar.edit.tip'), onEditClick);
   editBtn.className = 'dshsp-btn dshsp-btn-primary';
-  const findBtn = mkBtn('搜索', '搜索（Ctrl+F）', openFind);
-  const aMinus = mkBtn('A−', '缩小文件文字（或 Ctrl+向下滚轮）', () => bumpZoom(-1));
-  const zoomBtn = mkBtn('—', '点击恢复官方默认字号', () => setOfficialZoom(1));
+  const findBtn = mkBtn(tr('bar.find'), tr('bar.find.tip'), openFind);
+  const aMinus = mkBtn('A−', tr('font.in'), () => bumpZoom(-1));
+  const zoomBtn = mkBtn('—', tr('font.reset.official'), () => setOfficialZoom(1));
   zoomBtn.style.minWidth = '42px';
   zoomBtn.style.justifyContent = 'center';
-  const aPlus = mkBtn('A+', '放大文件文字（或 Ctrl+向上滚轮）', () => bumpZoom(1));
-  const linenoBtn = mkBtn('行号', '显示/隐藏行号（仅官方纯文本视图，默认关）', () => setPlainLineNo(!plainLineNo));
-  const saveBtn = mkBtn('保存', '保存（Ctrl+S）', () => doSave(false));
+  const aPlus = mkBtn('A+', tr('font.out'), () => bumpZoom(1));
+  const linenoBtn = mkBtn(tr('bar.lineno'), tr('bar.lineno.tip'), () => setPlainLineNo(!plainLineNo));
+  const saveBtn = mkBtn(tr('bar.save'), tr('bar.save.tip'), () => doSave(false));
   saveBtn.className = 'dshsp-btn dshsp-btn-primary';
-  const exitBtn = mkBtn('退出编辑', '退出编辑（Esc）', () => exitInplace());
+  const exitBtn = mkBtn(tr('bar.exit'), tr('bar.exit.tip'), () => exitInplace());
   const ipJump = mkJump(() => (ip.active ? ip.ta : null), barFlash);
-  const forceBtn = mkBtn('强制保存', '磁盘上这份已变，强制覆盖', () => doSave(true));
+  const forceBtn = mkBtn(tr('bar.forcedit'), tr('bar.forcedit.tip'), () => doSave(true));
   forceBtn.className = 'dshsp-btn dshsp-conflict';
-  const reloadBtn = mkBtn('重载最新', '丢掉本地改动，重读磁盘最新', () => reloadLatest());
+  const reloadBtn = mkBtn(tr('bar.reload'), tr('bar.reload.tip'), () => reloadLatest());
   reloadBtn.className = 'dshsp-btn dshsp-conflict';
   bar.appendChild(editBtn);
   bar.appendChild(saveBtn);
@@ -1370,10 +1439,10 @@ function enhanceStart() {
   reloadBtn.style.display = 'none';
   findRow.appendChild(input);
   findRow.appendChild(count);
-  findRow.appendChild(mkBtn('Aa', '区分大小写', function () { ff.cs = !ff.cs; ff.idx = 0; runFf(); }));
-  findRow.appendChild(mkBtn('↑', '上一个（↑）', () => stepFf(-1)));
-  findRow.appendChild(mkBtn('↓', '下一个（↓）', () => stepFf(1)));
-  findRow.appendChild(mkBtn('✕', '关闭（Esc）', closeFind));
+  findRow.appendChild(mkBtn('Aa', tr('find.case'), function () { ff.cs = !ff.cs; ff.idx = 0; runFf(); }));
+  findRow.appendChild(mkBtn('↑', tr('find.prev'), () => stepFf(-1)));
+  findRow.appendChild(mkBtn('↓', tr('find.next'), () => stepFf(1)));
+  findRow.appendChild(mkBtn('✕', tr('find.close'), closeFind));
   input.addEventListener('input', function () { ff.q = input.value; ff.idx = 0; runFf(); });
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); stepFf(e.shiftKey ? -1 : 1); }
@@ -1475,25 +1544,24 @@ function enhanceStart() {
     return { caps: caps, side: side, sides: sides, el: side === 'both' ? caps.body : caps[side] };
   }
 
-  const rEditBtn = mkBtn('编辑右侧', '', () => rvEnterEdit());
+  const rEditBtn = mkBtn(tr('rv.edit'), '', () => rvEnterEdit());
   rEditBtn.className = 'dshsp-btn dshsp-btn-primary';
-  const rSaveBtn = mkBtn('保存', '保存（Ctrl+S）', () => rvSave(false));
+  const rSaveBtn = mkBtn(tr('bar.save'), tr('bar.save.tip'), () => rvSave(false));
   rSaveBtn.className = 'dshsp-btn dshsp-btn-primary';
-  const rExitBtn = mkBtn('退出编辑', '退出编辑（Esc）', () => rvExitEdit());
+  const rExitBtn = mkBtn(tr('bar.exit'), tr('bar.exit.tip'), () => rvExitEdit());
   const rvJump = mkJump(() => (rved.active ? rved.ta : null), rvFlash);
-  const rFindBtn = mkBtn('搜索', '', () => rvOpenFind());
+  const rFindBtn = mkBtn(tr('bar.find'), '', () => rvOpenFind());
   const rAMinus = mkBtn('A−', '', () => rvBump(-1));
   const rZoomBtn = mkBtn('—', '', () => rvSetZoom(1));
   rZoomBtn.style.minWidth = '42px';
   rZoomBtn.style.justifyContent = 'center';
   const rAPlus = mkBtn('A+', '', () => rvBump(1));
-  const rForceBtn = mkBtn('强制保存', '磁盘上这份已变，强制覆盖', () => rvSave(true));
+  const rForceBtn = mkBtn(tr('bar.forcedit'), tr('bar.forcedit.tip'), () => rvSave(true));
   rForceBtn.className = 'dshsp-btn dshsp-conflict';
-  const rReloadBtn = mkBtn('重载最新', '丢掉本地改动，重读磁盘最新', () => rvReload());
+  const rReloadBtn = mkBtn(tr('bar.reload'), tr('bar.reload.tip'), () => rvReload());
   rReloadBtn.className = 'dshsp-btn dshsp-conflict';
   const rvLabel = function (key, fallback) {
-    const v = zh[key] != null ? zh[key] : en[key];
-    return typeof v === 'string' && v ? v : fallback;
+    return tr(key, fallback);
   };
   function rvTitles() {
     rEditBtn.title = rvLabel('rv.edit.tip', '编辑右侧（当前文件），左侧是只读的历史快照；会先切成左右分栏、不换行');
@@ -1577,13 +1645,13 @@ function enhanceStart() {
   }
   rfindRow.appendChild(rInput);
   rfindRow.appendChild(rCount);
-  rfindRow.appendChild(rvSideBtn('both', '两侧', '左右两侧一起搜'));
-  rfindRow.appendChild(rvSideBtn('left', '左', '只搜左侧（本轮开始的历史快照），上下箭头只在左侧走'));
-  rfindRow.appendChild(rvSideBtn('right', '右', '只搜右侧（当前文件），上下箭头只在右侧走'));
-  rfindRow.appendChild(mkBtn('Aa', '区分大小写', function () { rvff.cs = !rvff.cs; rvff.idx = 0; rvRunFind(); }));
-  rfindRow.appendChild(mkBtn('↑', '上一个（↑）', () => rvStepFind(-1)));
-  rfindRow.appendChild(mkBtn('↓', '下一个（↓）', () => rvStepFind(1)));
-  rfindRow.appendChild(mkBtn('✕', '关闭（Esc）', rvCloseFind));
+  rfindRow.appendChild(rvSideBtn('both', tr('rv.side.both'), tr('rv.side.both.tip')));
+  rfindRow.appendChild(rvSideBtn('left', tr('rv.side.left'), tr('rv.side.left.tip')));
+  rfindRow.appendChild(rvSideBtn('right', tr('rv.side.right'), tr('rv.side.right.tip')));
+  rfindRow.appendChild(mkBtn('Aa', tr('find.case'), function () { rvff.cs = !rvff.cs; rvff.idx = 0; rvRunFind(); }));
+  rfindRow.appendChild(mkBtn('↑', tr('find.prev'), () => rvStepFind(-1)));
+  rfindRow.appendChild(mkBtn('↓', tr('find.next'), () => rvStepFind(1)));
+  rfindRow.appendChild(mkBtn('✕', tr('find.close'), rvCloseFind));
   rInput.addEventListener('input', function () { rvff.q = rInput.value; rvff.idx = 0; rvRunFind(); });
   rInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); rvStepFind(e.shiftKey ? -1 : 1); }
@@ -1656,7 +1724,7 @@ function enhanceStart() {
     rEditBtn.style.display = (on || bin) ? 'none' : '';
     rFindBtn.style.display = on ? 'none' : '';
     rvJump.box.style.display = on ? '' : 'none';
-    setText(rSaveBtn, '保存' + (rved.dirty ? ' *' : ''));
+    setText(rSaveBtn, tr('bar.save') + (rved.dirty ? ' *' : ''));
     rfindRow.style.display = (rvff.open && !on) ? 'flex' : 'none';
   }
 
@@ -1959,7 +2027,7 @@ function enhanceStart() {
     findRow.style.display = (ff.open && !ip.active) ? 'flex' : 'none';
     const isPlain = !!cur.body.querySelector('[data-textpreview-plain]');
     linenoBtn.style.display = (isPlain && !ip.active) ? '' : 'none';
-    setText(linenoBtn, '行号');
+    setText(linenoBtn, tr('bar.lineno'));
     linenoBtn.className = plainLineNo ? 'dshsp-btn dshsp-btn-on' : 'dshsp-btn';
     try {
       if (isPlain && plainLineNo) {
@@ -2164,6 +2232,8 @@ return {
     fromEditorText: fromEditorText,
     humanBytes: humanBytes,
     bytesOf: bytesOf,
+    tr: tr,
+    uiIsEn: uiIsEn,
     pathSuffix: pathSuffix,
     isBinaryPath: isBinaryPath,
     officialBinary: officialBinary,

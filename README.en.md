@@ -48,14 +48,9 @@ The toolbar sits below the official header:
   - The comparison is the turn's snapshot and does not update when the file is saved.
 - One-sided comparisons (additions or deletions only) have no columns; the editor then fills the whole comparison area.
 
-## Known issues
-
-- **PDF / Office previews fail (official side; fine in current releases)**: the pdf.js 6.3.289 bundled with DSH `0.1.7-rc.2` / `0.2.0-rc.1` calls the relatively new browser function `Map.prototype.getOrInsertComputed`; on engines that do not provide it, PDF and Office previews (documents are converted to PDF first) fail with `this[#methodPromises].getOrInsertComputed is not a function`. Tested on `0.2.0-rc.2`: PDFs open normally. If you still hit it, use the check below. This is unrelated to the plugin and **does not affect the plugin's own features**: the `.md` source view and search / font size / edit-and-save for json / yaml / txt / csv etc. keep working.
-- **Is this the cause?** Open the DSH page, press **F12**, and run `typeof Map.prototype.getOrInsertComputed` in the console. `undefined` means the engine lacks the function, i.e. the official-side issue above — please include your browser name and version when reporting. `function` means something else is going on; report it with the diagnostic output below.
-- Toolbar labels are Chinese-only; official views follow the DSH language.
-
 ## Changelog
 
+- **0.4.3**: **English toolbar labels** — buttons (Edit / Find / Save / Exit / Save anyway / Reload / Edit right / Lines), hover tips, the find bar and the line-jump control now follow the DSH UI language (the Chinese UI is unchanged; switching language in settings takes effect immediately). Also: installation instructions now spell out both flavors (desktop = install from the UI: Settings → Plugins → Add plugin, enter the package name; Web = run `dsh plugin --profile web add dsh-sidebar-plus`); removed one duplicated line and the known-issues section.
 - **0.4.2**: Pane ownership now comes from the official slot registry; position and appearance are unchanged. The plugin registers one hook that displays nothing — one in the document header slot, one in the review file-actions slot — and takes the pane and the absolute file path from official props instead of inferring them from the DOM. While a hook is live the observer watches the right-sidebar container rather than the whole document; without one it falls back to scanning the document. Binary detection now follows `binaryExtensions` declared in the official `documentPreviews` registry, with the plugin's built-in suffix list kept only as a fallback. **This release changes the browser loader, so restart DSH once after upgrading.**
 - **0.4.1**: Office files, spreadsheets, PDFs and images are no longer handled. Since DSH 0.1.7 those viewers share the plain-text view's outer markers, and the previous version therefore classified them as text: clicking "Edit" in such a view either failed or overwrote the file as plain text. The decision is now made by file suffix, and matching files are left alone entirely. Also fixed: the toolbar attaches only to the currently visible pane (switching tabs no longer attaches it to a hidden one); the line-number toggle keys off the official `data-textpreview-plain` marker; the comparison view no longer offers "Edit right side" for binary files; and whole-file byte delivery no longer leaves the source view blank.
 - **0.4.0**: support for the official comparison view (see ⑤); states the supported DSH version.
@@ -63,13 +58,17 @@ The toolbar sits below the official header:
 
 ## Install
 
-Published on npm as `dsh-sidebar-plus`. From the DSH terminal:
+Published on npm as `dsh-sidebar-plus`. Pick the one that matches your DSH:
+
+**Desktop (Electron) — install from the UI**: Settings → Plugins → Add plugin, enter `dsh-sidebar-plus` in "package name or address", then restart once as prompted. (The CLI cannot manage the desktop profile; `managed exclusively by the Electron application` is expected, not an error.)
+
+**Web — install by command**: from the DSH terminal:
 
 ```
 dsh plugin --profile web add dsh-sidebar-plus
 ```
 
-Restart DSH once after install. Later day-to-day changes to the hot files (`hot-*.cjs`) apply live within ~2 seconds — no restart, no page refresh. Only changes to the loaders themselves need a restart.
+Restart DSH once after install on either flavor. Later day-to-day changes to the hot files (`hot-*.cjs`) apply live within ~2 seconds — no restart, no page refresh. Only changes to the loaders themselves need a restart.
 
 ## Uninstall and rollback
 

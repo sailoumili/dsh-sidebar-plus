@@ -38,7 +38,7 @@ ok(api._test.ID === 'dsh-sidebar-plus/source' && api._test.NS === 'dshSidebarPlu
 
 // ---------- 浏览器业务：通过加载器的 compileBus 真编译 hot-client.cjs ----------
 const bus = api._test.compileBus(read('hot-client.cjs'), { react: stubReact, remote: null })
-ok(typeof bus.version === 'string' && bus.version === '0.4.2', '业务版本号', bus.version)
+ok(typeof bus.version === 'string' && bus.version === '0.4.3', '业务版本号', bus.version)
 ok(typeof bus.Body === 'function' && typeof bus.Actions === 'function' && typeof bus.ReviewActions === 'function' && bus.title === '源编辑' && Array.isArray(bus.extensions), '业务契约字段齐全（含两个官方插槽挂钩组件）')
 ok(bus.extensions.length === 2 && bus.extensions[0] === 'md' && bus.extensions[1] === 'markdown', '接管范围收窄到 md/markdown（其余格式保持官方视图、默认不被抢）', bus.extensions.join(','))
 ok(bus.meta && bus.meta.loading === 'text-pages' && bus.meta.wrap === true && bus.meta.priority === 'builtin', '业务 meta：文本分页+支持换行+builtin 档注册（官方视图保持默认，不抢）')
@@ -149,7 +149,7 @@ const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-sp-home-'))
 process.env.DSH_HOME = tmpHome
 const host = await import(pathToFileURL(path.join(root, 'lib', 'index.js')).href)
 const H2 = host._test
-ok(H2.LOADER_VERSION === '0.4.2', '宿主加载器版本')
+ok(H2.LOADER_VERSION === '0.4.3', '宿主加载器版本')
 ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT), '热件路径指到插件根目录')
 // 版本号散在四处，发版时漏一处就会「版本静默不一致」——这里钉死
 {
@@ -174,7 +174,7 @@ ok(/hot-host\.cjs$/.test(H2.HOT_HOST) && /hot-client\.cjs$/.test(H2.HOT_CLIENT),
 
 // ---------- 宿主业务：用加载器的 loadHostBus 真装载 hot-host.cjs ----------
 const hbus = H2.loadHostBus(H2.HOT_HOST)
-ok(hbus.version === '0.4.2' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
+ok(hbus.version === '0.4.3' && hbus.handlers && typeof hbus.handlers.save === 'function' && typeof hbus.handlers.stat === 'function', '宿主业务装载成功，handlers 齐全')
 {
   const N = (s) => ({ get: (k) => (k === 'abs' ? s : null) })
   ok(hbus.handlers.stat(N('relative/a.md')).body.ok === false, 'stat 拒相对路径')
