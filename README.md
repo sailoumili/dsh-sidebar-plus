@@ -51,7 +51,7 @@
 
 ## 已知问题
 
-- **PDF / Office 预览打不开（官方侧）**：DSH `0.1.7-rc.2` 内置的 pdf.js 6.3.289 调用了较新的浏览器函数 `Map.prototype.getOrInsertComputed`，内核尚未提供时，PDF 与 Office（文档先转 PDF 再显示）预览会报 `this[#methodPromises].getOrInsertComputed is not a function`；`0.2.0-rc.1` 已核对，同样未修。该问题与本插件无关，**也不影响本插件的功能**：`.md` 源编辑、json / yaml / txt / csv 等文本的搜索、字号调节与编辑保存照常可用。
+- **PDF / Office 预览打不开（官方侧，新版已正常）**：DSH `0.1.7-rc.2` / `0.2.0-rc.1` 内置的 pdf.js 6.3.289 调用了较新的浏览器函数 `Map.prototype.getOrInsertComputed`，内核尚未提供时，PDF 与 Office（文档先转 PDF 再显示）预览会报 `this[#methodPromises].getOrInsertComputed is not a function`；`0.2.0-rc.2` 实测 PDF 已可正常打开。若仍遇到，请用下一条自查。该问题与本插件无关，**也不影响本插件的功能**：`.md` 源编辑、json / yaml / txt / csv 等文本的搜索、字号调节与编辑保存照常可用。
 - **怎么判断是不是这个原因**：在报错的 DSH 页面按 **F12** 打开控制台，执行 `typeof Map.prototype.getOrInsertComputed`。返回 `undefined` 即内核缺这个函数，属上述官方侧问题，提 issue 时请带上浏览器名称与版本；返回 `function` 则另说，请按下方「反馈」方式附上诊断口输出。
 - 工具条按钮文字目前仅有中文（界面切到英文时按钮仍显示中文）。
 

@@ -50,7 +50,7 @@ The toolbar sits below the official header:
 
 ## Known issues
 
-- **PDF / Office previews fail (official side)**: the pdf.js 6.3.289 bundled with DSH `0.1.7-rc.2` calls the relatively new browser function `Map.prototype.getOrInsertComputed`; on engines that do not provide it, PDF and Office previews (documents are converted to PDF first) fail with `this[#methodPromises].getOrInsertComputed is not a function`. Checked against `0.2.0-rc.1`: unchanged. This is unrelated to the plugin and **does not affect the plugin's own features**: the `.md` source view and search / font size / edit-and-save for json / yaml / txt / csv etc. keep working.
+- **PDF / Office previews fail (official side; fine in current releases)**: the pdf.js 6.3.289 bundled with DSH `0.1.7-rc.2` / `0.2.0-rc.1` calls the relatively new browser function `Map.prototype.getOrInsertComputed`; on engines that do not provide it, PDF and Office previews (documents are converted to PDF first) fail with `this[#methodPromises].getOrInsertComputed is not a function`. Tested on `0.2.0-rc.2`: PDFs open normally. If you still hit it, use the check below. This is unrelated to the plugin and **does not affect the plugin's own features**: the `.md` source view and search / font size / edit-and-save for json / yaml / txt / csv etc. keep working.
 - **Is this the cause?** Open the DSH page, press **F12**, and run `typeof Map.prototype.getOrInsertComputed` in the console. `undefined` means the engine lacks the function, i.e. the official-side issue above — please include your browser name and version when reporting. `function` means something else is going on; report it with the diagnostic output below.
 - Toolbar labels are Chinese-only; official views follow the DSH language.
 
