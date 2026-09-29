@@ -12,7 +12,7 @@ Five additions to the DSH sidebar file preview:
 
 **Binary formats are not handled**: Office files (doc / docx / ppt / pptx), spreadsheets (xls / xlsx), PDFs and images (png / jpg, …) are displayed by the official viewers; the plugin injects no toolbar, offers no editing and does not intercept Ctrl+F. Their content is not text, and opening then saving them as text would corrupt the original file. The scope follows the `binaryExtensions` declared in the official registry, so audio/video, archives, executables and fonts are covered the same way. Text formats such as `.md` / `.markdown`, json / yaml / txt / log / csv / svg are unaffected.
 
-**Supported DSH versions: `0.1.7-rc.2` and `0.2.0-rc.1`.**
+**Supported DSH versions: `0.1.7-rc.2` and later (tested on `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`). The plugin declares no version constraint, so neither DSH nor the plugin market will block installation on version grounds.**
 
 ## Features
 
