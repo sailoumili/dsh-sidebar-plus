@@ -1,7 +1,7 @@
 {
   "name": "dsh-sidebar-plus",
-  "version": "0.4.3",
-  "description": "Sidebar file-view enhancement for DSH (zero official-file changes, hot-pluggable): a Source view for .md/.markdown — line numbers, in-file search, direct edit & save (auto backup + overwrite protection), adjustable font size; find/zoom/in-place editing on the official previews; and a toolbar on the official side-by-side comparison view (one-side or both-side search, font size for both sides at once, right-side-only editing). 中文 README 见 README.md / English: README.en.md",
+  "version": "0.4.4",
+  "description": "Sidebar file-view enhancement for DSH (zero official-file changes, hot-pluggable): a Source view for .md/.markdown — line numbers, in-file search, direct edit & save (auto backup to a configurable folder + overwrite protection), adjustable font size; find/zoom/in-place editing on the official previews; and a toolbar on the official side-by-side comparison view (one-side or both-side search, font size for both sides at once, right-side-only editing). 中文 README 见 README.md / English: README.en.md",
   "author": "sailoumili",
   "keywords": [
     "dsh",
@@ -22,7 +22,18 @@
     "editor",
     "line-numbers",
     "search",
-    "zoom"
+    "zoom",
+    "backup",
+    "backup-folder",
+    "auto-backup",
+    "侧边栏",
+    "侧边栏编辑",
+    "源编辑",
+    "编辑",
+    "行号",
+    "自动备份",
+    "备份路径",
+    "对比视图"
   ],
   "homepage": "https://github.com/sailoumili/dsh-sidebar-plus",
   "repository": {
@@ -51,6 +62,9 @@
     "README.en.md"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

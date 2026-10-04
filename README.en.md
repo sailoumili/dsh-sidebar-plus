@@ -2,17 +2,18 @@
 
 English | [中文](README.md)
 
-Five additions to the DSH sidebar file preview:
+Six additions to the DSH sidebar file preview:
 
 1. A "Source" view for `.md` / `.markdown`, with Markdown source tinting and line numbers.
 2. Edit and save: for Markdown files, "Edit" switches to the "Source" view; for all other text formats, editing takes place directly in the current view.
 3. Search and font-size controls in every view.
 4. A line-number toggle in the official "plain text" view, which can be switched on or off at any time.
-5. A toolbar on the official comparison view (the side-by-side page for a turn's changes): search either or both sides, scale both sides together, edit the right side only.
+5. A toolbar on the official comparison view (the side-by-side page for a turn's changes): search one side or both, adjust both sides' font size together, and edit the right side only.
+6. The "⋯" settings button at the end of the toolbar holds the backup folder setting: `~/.dsh/sidebar-plus-backups` by default.
 
 **Binary formats are not handled**: Office files (doc / docx / ppt / pptx), spreadsheets (xls / xlsx), PDFs and images (png / jpg, …) are displayed by the official viewers; the plugin injects no toolbar, offers no editing and does not intercept Ctrl+F. Their content is not text, and opening then saving them as text would corrupt the original file. The scope follows the `binaryExtensions` declared in the official registry, so audio/video, archives, executables and fonts are covered the same way. Text formats such as `.md` / `.markdown`, json / yaml / txt / log / csv / svg are unaffected.
 
-**Supported DSH versions: `0.1.7-rc.2` and later (tested on `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.0-rc.2`). The plugin declares no version constraint, so neither DSH nor the plugin market will block installation on version grounds.**
+**Supported DSH versions: `0.1.7` and later.**
 
 ## Features
 
@@ -25,7 +26,7 @@ Select "Source" from the "open with" menu at the top right. The view shows line 
 - binary formats (Office / spreadsheets / PDF / images): no editing is offered.
 - Save: press **Ctrl+S** or click "Save". Exit: press **Esc** or click "Exit".
 - If the file has been modified elsewhere, you are asked to choose "Save anyway" or "Reload latest".
-- The previous version is backed up automatically before overwriting, so accidental changes can be reverted.
+- The previous version is backed up automatically before overwriting, so accidental changes can be reverted; see Settings for the backup location.
 - A single file can be up to 32 MB to save; larger files are refused with a clear message, nothing is written and the original is untouched.
 
 **③ Line-number toggle** (official "plain text" view)
@@ -48,8 +49,13 @@ The toolbar sits below the official header:
   - The comparison is the turn's snapshot and does not update when the file is saved.
 - One-sided comparisons (additions or deletions only) have no columns; the editor then fills the whole comparison area.
 
+**⑥ Backup folder**
+
+A "⋯" button is added at the end of the toolbar. It opens the settings panel, where the backup folder path can be customised; click "Reset" to return to `~/.dsh/sidebar-plus-backups`. When the path is changed, the backup files in the old path are moved to the new one.
+
 ## Changelog
 
+- **0.4.4**: a settings panel (the "⋯" button at the end of the toolbar) with a "Backup folder" section — set the backup folder path; the default remains `~/.dsh/sidebar-plus-backups`. When the path is changed, the backup files in the old path are moved to the new one.
 - **0.4.3**: **English toolbar labels** — buttons (Edit / Find / Save / Exit / Save anyway / Reload / Edit right / Lines), hover tips, the find bar and the line-jump control now follow the DSH UI language (the Chinese UI is unchanged; switching language in settings takes effect immediately). Also: installation instructions now spell out both flavors (desktop = install from the UI: Settings → Plugins → Add plugin, enter the package name; Web = run `dsh plugin --profile web add dsh-sidebar-plus`); removed one duplicated line and the known-issues section.
 - **0.4.2**: Pane ownership now comes from the official slot registry; position and appearance are unchanged. The plugin registers one hook that displays nothing — one in the document header slot, one in the review file-actions slot — and takes the pane and the absolute file path from official props instead of inferring them from the DOM. While a hook is live the observer watches the right-sidebar container rather than the whole document; without one it falls back to scanning the document. Binary detection now follows `binaryExtensions` declared in the official `documentPreviews` registry, with the plugin's built-in suffix list kept only as a fallback. **This release changes the browser loader, so restart DSH once after upgrading.**
 - **0.4.1**: Office files, spreadsheets, PDFs and images are no longer handled. Since DSH 0.1.7 those viewers share the plain-text view's outer markers, and the previous version therefore classified them as text: clicking "Edit" in such a view either failed or overwrote the file as plain text. The decision is now made by file suffix, and matching files are left alone entirely. Also fixed: the toolbar attaches only to the currently visible pane (switching tabs no longer attaches it to a hidden one); the line-number toggle keys off the official `data-textpreview-plain` marker; the comparison view no longer offers "Edit right side" for binary files; and whole-file byte delivery no longer leaves the source view blank.
@@ -58,7 +64,7 @@ The toolbar sits below the official header:
 
 ## Install
 
-Published on npm as `dsh-sidebar-plus`. Pick the one that matches your DSH:
+Published on npm as `dsh-sidebar-plus`.
 
 **Desktop (Electron) — install from the UI**: Settings → Plugins → Add plugin, enter `dsh-sidebar-plus` in "package name or address", then restart once as prompted. (The CLI cannot manage the desktop profile; `managed exclusively by the Electron application` is expected, not an error.)
 
@@ -73,14 +79,14 @@ Restart DSH once after install on either flavor. Later day-to-day changes to the
 ## Uninstall and rollback
 
 - Disable or remove the plugin, then restart DSH: the official previews come back untouched — the plugin modifies no official file and leaves no residue in the page.
-- To recover content after a wrong save: every overwrite is preceded by a full copy of the previous file in `~/.dsh/sidebar-plus-backups/`, kept per file name (latest 20).
+- To recover content after a wrong save: every overwrite is preceded by a full copy of the previous file in the backup folder (default `~/.dsh/sidebar-plus-backups/`, changeable in Settings), kept per file name (latest 20).
 
 ## Architecture (hot-pluggable)
 
 ```
 lib/index.js     host loader: registers /dsh-sp routes + guards, hot-reloads hot-host.cjs
 lib/client.js    browser loader: registers the renderer, the body shell and two invisible hooks (document header, review file actions) with the official preview, pulls hot-client.cjs source and hot-swaps it
-hot-host.cjs     host business: stat / save / backup / conflict — edit this, live in ~2s, no restart
+hot-host.cjs     host business: stat / save / config / backup / conflict — edit this, live in ~2s, no restart
 hot-client.cjs   browser business: components / copy / styles / extension list — edit this, live in ~2s, no refresh
 scripts/test.mjs       offline self-test: loaders + host IO sandbox + business pure functions
 scripts/test-dom.mjs   jsdom + React18 render test: lines/search/font-size/edit-save/conflict/hot-swap/instant-mount/comparison view/cleanup
@@ -92,27 +98,16 @@ A broken hot file cannot break the page: if it fails to compile or validate, the
 
 ### Custom endpoints
 
-Add a same-named key to `handlers` in `hot-host.cjs`; routing is a forwarding prefix, so the loader never changes.
+Add a same-named key to `handlers` in `hot-host.cjs`; routing is a forwarding prefix, so the loader never changes. Current endpoints: `stat`, `save`, `mark`, `marks`, and `config` (read the backup folder / dry-run / move, where the dry run has no side effects).
 
 ## Privacy & boundaries
 
 - Reads and writes only files the user opens, inside the local DSH process. **No external network calls.**
 - Endpoint access control: requests carrying Origin must be same-origin; the save endpoint accepts POST with `application/json` only (cross-origin blind requests die at the CORS preflight).
-- Pre-save backups go to `$DSH_HOME/sidebar-plus-backups/` (default `~/.dsh/sidebar-plus-backups/`; local runtime data; latest 20 copies per file name, 500 in total). A backup is a **full copy of the file**; if that directory is covered by a sync tool of your own, those copies travel with it — the plugin never sends data anywhere itself.
+- Pre-save backups go to `$DSH_HOME/sidebar-plus-backups/` by default (`~/.dsh/sidebar-plus-backups/`; local runtime data; latest 20 copies per file name, 500 in total) and can be set to any absolute path in Settings; the chosen path is stored in `$DSH_HOME/sidebar-plus.config.json`. A backup is a **full copy of the file**; if that directory is covered by a sync tool of your own, those copies travel with it — the plugin never sends data anywhere itself.
 - The `/dsh-sp/*` guard only blocks cross-origin web pages; a local process without an Origin header can also call `/dsh-sp/save` (absolute path + regular file only), i.e. a "back up, then overwrite any local file" primitive on par with other local CLI tools, granting no remote capability.
 - Settings live in browser localStorage: source-view font size `dsh-sidebar-plus.fontPx`, official-view zoom `dsh-sidebar-plus.officialZoom`, plain-text line numbers `dsh-sidebar-plus.plainLineNo`, comparison-view zoom `dsh-sidebar-plus.reviewZoom`, comparison-view search scope `dsh-sidebar-plus.reviewFindSide`.
 - The timing probe keeps timestamps in process memory only — nothing is written to disk or sent anywhere.
-
-## Feedback
-
-Please file issues at <https://github.com/sailoumili/dsh-sidebar-plus/issues>. For a bug report, include the output of these two read-only endpoints — they say directly which path is live:
-
-```
-http://127.0.0.1:<DSH port>/dsh-sp/health
-http://127.0.0.1:<DSH port>/dsh-sp/marks
-```
-
-Open them in the same browser as the DSH page (adjust the port to your own). `health` reports the three versions; `marks` reports whether the hooks attached, the observer scope, and which source the binary decision came from. Both read process memory only — nothing is written to disk or sent anywhere.
 
 ## License
 

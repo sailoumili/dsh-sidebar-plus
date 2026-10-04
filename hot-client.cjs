@@ -1,6 +1,6 @@
 'use strict';
 const react = ENV.react;
-const VERSION = '0.4.3';
+const VERSION = '0.4.4';
 
 const zh = {
   'viewer.label': '源编辑',
@@ -50,6 +50,61 @@ const zh = {
   'rv.side.left.tip': '只搜左侧（本轮开始的历史快照），上下箭头只在左侧走',
   'rv.side.right': '右',
   'rv.side.right.tip': '只搜右侧（当前文件），上下箭头只在右侧走',
+  'bar.settings': '设置',
+  'bar.settings.tip': '设置（备份路径）',
+  'settings.title': '设置',
+  'settings.backup': '备份路径',
+  'backup.current': '当前路径',
+  'backup.holder': '新的备份文件夹绝对路径',
+  'backup.hint': '默认路径：{default}。更改后，旧文件夹内的文件将移动至新文件夹。',
+  'backup.save': '保存',
+  'backup.reset': '恢复默认',
+  'backup.cancel': '取消',
+  'backup.ok': '确定',
+  'backup.confirm.title': '确认修改备份路径',
+  'backup.confirm.body': '备份文件夹将从 {from} 改为 {to}。旧文件夹内的 {n} 个文件将移动至新文件夹；点击「确定」后执行。',
+  'backup.confirm.none': '备份文件夹将从 {from} 改为 {to}。旧文件夹内没有需要移动的文件。',
+  'backup.moved': '已将 {n} 个备份文件移动至新文件夹',
+  'backup.moved.partial': '已将 {n} 个备份文件移动至新文件夹；另有 {f} 个未能移动，仍保留在旧文件夹',
+  'backup.movedThenFailed': '{moved} 个备份文件已移动至新位置，但新路径未能保存；请检查 DSH 配置目录是否可写',
+  'backup.same': '新路径与当前路径相同',
+  'backup.alreadyDefault': '已位于默认路径',
+  'backup.loading': '正在读取…',
+  'backup.failed': '操作失败：{err}',
+  'backup.err.empty-path': '路径不能为空',
+  'backup.err.not-absolute': '请输入绝对路径（如 D:\\备份）',
+  'backup.err.bad-path': '路径不可包含特殊字符',
+  'backup.err.is-file': '该路径已是一个文件',
+  'backup.err.bad-target': '不可选择盘符根目录或 DSH 配置目录',
+  'backup.err.mkdir-failed': '该文件夹无法创建',
+  'backup.err.not-writable': '该文件夹不可写入',
+  'backup.err.bad-json': '请求格式不正确',
+  'backup.err.config-write-failed': '新路径未能保存（配置文件不可写）；请检查 DSH 配置目录是否可写',
+  'backup.err.nested-dir': '不能选择当前备份文件夹的子文件夹',
+  'err.not-ready': '连接未就绪，稍后再试',
+  'err.no-readbytes': '当前 DSH 版本缺少整文件读取接口（workspaceFiles.readBytes）',
+  'err.no-session': '无法定位所属会话（只支持会话工作区内的文件）',
+  'err.read-failed': '读取完整文件失败：{err}',
+  'err.decode-failed': '文件内容解码失败',
+  'err.not-utf8': '非 UTF-8 文本文件，编辑可能损坏内容，已阻止',
+  'err.no-file': '无法定位文件',
+  'flash.not-text': '（该文件不是文本，无法在此视图显示）',
+  'flash.saved': '已保存 {size}{bak}',
+  'flash.bak-note': '（旧版已自动备份）',
+  'flash.changed': '文件在别处被改过，请选择：',
+  'flash.save-failed': '保存失败：{err}',
+  'flash.reloaded': '已重载磁盘最新内容',
+  'flash.exit-edit-first': '请先退出编辑再搜索',
+  'flash.jumped': '已跳到第 {n} 行',
+  'flash.need-source': '请先切到「源编辑」视图',
+  'flash.switch-failed': '切换失败，请手动选「源编辑」',
+  'flash.editing': '编辑中：Ctrl+S 保存，Esc 退出',
+  'confirm.discard': '有未保存的修改，确定放弃并退出编辑吗？',
+  'rv.picked': '已选定第 {n} 行：点「编辑右侧」就从这一行开始',
+  'rv.no-target': '无法定位文件（缺少会话或路径）',
+  'rv.binary': '该格式不是文本文件（Office / 表格 / PDF 等），不能用文本编辑器改',
+  'rv.located': '已定位到第 {n} 行（左侧是历史对照，只读）；Ctrl+S 保存，Esc 退出',
+  'rv.saved-flash': '已保存 {size}{bak}；{note}',
 };
 const en = {
   'viewer.label': 'Source',
@@ -99,6 +154,61 @@ const en = {
   'rv.side.left.tip': 'Left side only (this turn\'s snapshot); ↑/↓ walk the left side',
   'rv.side.right': 'Right',
   'rv.side.right.tip': 'Right side only (the current file); ↑/↓ walk the right side',
+  'bar.settings': 'Settings',
+  'bar.settings.tip': 'Settings (backup folder)',
+  'settings.title': 'Settings',
+  'settings.backup': 'Backup folder',
+  'backup.current': 'Current path',
+  'backup.holder': 'Absolute path of the new backup folder',
+  'backup.hint': 'Default: {default}. On change, the files in the old folder are moved to the new one.',
+  'backup.save': 'Save',
+  'backup.reset': 'Reset',
+  'backup.cancel': 'Cancel',
+  'backup.ok': 'OK',
+  'backup.confirm.title': 'Confirm the new backup folder',
+  'backup.confirm.body': 'The backup folder will change from {from} to {to}. The {n} file(s) in the old folder will be moved to the new one; this runs after you click OK.',
+  'backup.confirm.none': 'The backup folder will change from {from} to {to}. There are no files to move in the old folder.',
+  'backup.moved': 'Moved {n} backup file(s) to the new folder',
+  'backup.moved.partial': 'Moved {n} backup file(s) to the new folder; {f} could not be moved and remain in the old folder',
+  'backup.movedThenFailed': '{moved} backup file(s) have been moved to the new location, but the new path could not be saved; check that the DSH config folder is writable',
+  'backup.same': 'The new path is the same as the current path',
+  'backup.alreadyDefault': 'Already at the default path',
+  'backup.loading': 'Loading…',
+  'backup.failed': 'Failed: {err}',
+  'backup.err.empty-path': 'The path cannot be empty',
+  'backup.err.not-absolute': 'Enter an absolute path (e.g. D:\\backups)',
+  'backup.err.bad-path': 'The path cannot contain invalid characters',
+  'backup.err.is-file': 'That path is already a file',
+  'backup.err.bad-target': 'The drive root and the DSH config folder cannot be selected',
+  'backup.err.mkdir-failed': 'The folder cannot be created',
+  'backup.err.not-writable': 'The folder is not writable',
+  'backup.err.bad-json': 'Invalid request format',
+  'backup.err.config-write-failed': 'The new path could not be saved (the config file is not writable); check that the DSH config folder is writable',
+  'backup.err.nested-dir': 'The folder cannot be inside the current backup folder',
+  'err.not-ready': 'Connection is not ready; try again shortly',
+  'err.no-readbytes': 'This DSH version lacks the whole-file read API (workspaceFiles.readBytes)',
+  'err.no-session': 'Cannot locate the owning session (only files inside a session workspace are supported)',
+  'err.read-failed': 'Failed to read the whole file: {err}',
+  'err.decode-failed': 'Failed to decode the file contents',
+  'err.not-utf8': 'Not a UTF-8 text file; editing could corrupt it, so it was blocked',
+  'err.no-file': 'Cannot locate the file',
+  'flash.not-text': '(This file is not text and cannot be shown in this view)',
+  'flash.saved': 'Saved {size}{bak}',
+  'flash.bak-note': ' (previous version backed up automatically)',
+  'flash.changed': 'The file changed elsewhere; choose an option:',
+  'flash.save-failed': 'Save failed: {err}',
+  'flash.reloaded': 'Reloaded the latest content from disk',
+  'flash.exit-edit-first': 'Exit editing before searching',
+  'flash.jumped': 'Jumped to line {n}',
+  'flash.need-source': 'Switch to the Source view first',
+  'flash.switch-failed': 'Switch failed; select Source manually',
+  'flash.editing': 'Editing: Ctrl+S saves, Esc exits',
+  'confirm.discard': 'There are unsaved changes. Discard them and exit editing?',
+  'rv.picked': 'Line {n} selected: "Edit right" starts at this line',
+  'rv.no-target': 'Cannot locate the file (session or path missing)',
+  'rv.binary': 'This format is not a text file (Office / spreadsheet / PDF, etc.) and cannot be edited with the text editor',
+  'rv.located': 'Located line {n} (the left side is a read-only historical comparison); Ctrl+S saves, Esc exits',
+  'rv.saved-flash': 'Saved {size}{bak}; {note}',
 };
 
 /* 界面语言跟随 DSH：官方 locale 把当前语言写在 <html lang>（zh 显示为 zh-CN）。
@@ -117,6 +227,17 @@ function tr(key, fallback) {
   if (en[key] != null) return en[key];
   return fallback != null ? fallback : key;
 }
+/* 文案里的 {名字} 占位替换：没命中的原样留着（不抛、不吞）。 */
+function tpl(key, vars) {
+  let s = String(tr(key));
+  if (vars) {
+    for (const k of Object.keys(vars)) {
+      const v = vars[k];
+      s = s.split('{' + k + '}').join(v == null ? '' : String(v));
+    }
+  }
+  return s;
+}
 
 let sharedFontPx = 14;
 try {
@@ -133,6 +254,9 @@ const SELF_ID = 'dsh-sidebar-plus/source';
 let fontPx = sharedFontPx;
 const fontSubs = new Set();
 let pendingEdit = false;
+/* 源编辑视图是独立的 React 组件，够不到 enhanceStart 里的设置面板与它的闪字；用两个模块级桥接。 */
+let settingsOpener = null;
+let sourceFlash = null;
 function consumePendingEdit() { const v = pendingEdit; pendingEdit = false; return v; }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -164,6 +288,8 @@ const CSS = [
   '.dshsp-root{display:flex;flex-direction:column;flex:auto;width:100%;min-width:0;height:100%;min-height:0;overflow:hidden}',
   '.dshsp-bar{display:flex;align-items:center;gap:6px;flex:none;min-height:30px;padding:2px 10px;font-size:12px;font-family:var(--dsw-font-family,system-ui,-apple-system,"Segoe UI",sans-serif);border-bottom:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.25))}',
   '.dshsp-status{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:auto;text-align:right}',
+  '.dshsp-dots{font-size:15px;line-height:1;letter-spacing:1px;padding:2px 8px}',
+  '.dshsp-modal-sec{font-weight:700;margin-top:2px}',
   '.dshsp-btn{flex:none;display:inline-flex;align-items:center;gap:3px;border:none;border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:12px;line-height:1;padding:3px 8px;cursor:pointer}',
   '.dshsp-btn:hover{background:rgba(128,128,128,.16)}',
   '.dshsp-btn[disabled]{opacity:.45;cursor:default}',
@@ -209,6 +335,20 @@ const CSS = [
   '.dshsp-jlabel{opacity:.7;font-size:11px}',
   '.dshsp-jump{width:4.2em;border:.5px solid rgba(128,128,128,.4);border-radius:5px;background:transparent;color:inherit;font:inherit;font-size:12px;padding:2px 5px;outline:none}',
   '.dshsp-jump:focus{border-color:rgba(64,150,255,.7)}',
+  /* 备份路径弹框：遮罩铺满 + 半透明，点空白＝取消；颜色一律走官方变量，写死色只作兜底。 */
+  '.dshsp-modal{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);font-family:var(--dsw-font-family,system-ui,-apple-system,"Segoe UI",sans-serif);font-size:13px;line-height:1.5}',
+  '.dshsp-modal-box{display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:min(640px,92vw);padding:14px 16px;border-radius:10px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,inherit);border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.25));box-shadow:0 12px 40px rgba(0,0,0,.35)}',
+  '.dshsp-modal-title{font-size:14px;font-weight:700}',
+  '.dshsp-modal-cur{opacity:.75;word-break:normal;overflow-wrap:anywhere}',
+  '.dshsp-modal-input{box-sizing:border-box;width:100%;min-width:320px;border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.4));border-radius:6px;background:transparent;color:inherit;font:inherit;padding:5px 8px;outline:none}',
+  '.dshsp-modal-input:focus{border-color:rgba(64,150,255,.7)}',
+  '.dshsp-modal-hint{opacity:.7;word-break:normal;overflow-wrap:anywhere}',
+  '.dshsp-modal-msg{min-height:1.4em;color:var(--dsw-alias-label-error,#e5533d);word-break:normal;overflow-wrap:anywhere}',
+  '.dshsp-modal-actions,.dshsp-modal-confirm-actions{display:flex;justify-content:flex-end;gap:6px}',
+  '.dshsp-modal-actions .dshsp-btn,.dshsp-modal-confirm-actions .dshsp-btn{border:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.35));padding:4px 12px}',
+  '.dshsp-modal-confirm{display:flex;flex-direction:column;gap:8px;padding-top:8px;border-top:.5px solid var(--dsw-alias-border-l3,rgba(128,128,128,.25))}',
+  '.dshsp-modal-confirm-title{font-weight:700}',
+  '.dshsp-modal-confirm-body{word-break:normal;overflow-wrap:anywhere}',
   '[data-changes-review] [data-diff-line].dshsp-anchor{background:rgba(64,150,255,.14)}',
   '[data-changes-review][data-dshsp-rv]>[data-review-view]>*{zoom:var(--dshsp-rvz,1)}',
   '[data-changes-review] .dshsp-rved{display:flex;flex:auto;min-width:0;min-height:0;overflow:hidden}',
@@ -360,7 +500,7 @@ function matchesByLine(matches) {
   return map;
 }
 
-const INLINE_RE = /(`[^`\n]*`|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)/g; /* ref-check:忽略（正则字面量，不是文件引用） */
+const INLINE_RE = /(`[^`\n]*`|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\s][^*\n]*\*|_[^_\s][^_\n]*_)/g; /* 正则字面量，不是文件引用 */
 function segmentMarkdown(line) {
   const rest0 = String(line);
   const chunks = [];
@@ -536,7 +676,7 @@ function bytesOf(data) {
 
 async function readWholeBytes(file, signal) {
   const wf = ENV.remote && ENV.remote.workspaceFiles;
-  if (!wf) throw new Error('连接未就绪，稍后再试');
+  if (!wf) throw new Error(tr('err.not-ready'));
   if (typeof wf.readBytes === 'function') {
     const args = signal ? [file.sessionId, file.path, {}, signal] : [file.sessionId, file.path, {}];
     return await wf.readBytes.apply(wf, args);
@@ -545,21 +685,21 @@ async function readWholeBytes(file, signal) {
     const args = signal ? [file.sessionId, file.path, signal] : [file.sessionId, file.path];
     return await wf.readAll.apply(wf, args);
   }
-  throw new Error('当前 DSH 版本缺少整文件读取接口（workspaceFiles.readBytes）');
+  throw new Error(tr('err.no-readbytes'));
 }
 
 async function readWholeText(address, signal) {
   const file = parseFileAddress(address);
-  if (!file || file.scope !== 'session') throw new Error('无法定位所属会话（只支持会话工作区内的文件）');
+  if (!file || file.scope !== 'session') throw new Error(tr('err.no-session'));
   const res = await readWholeBytes(file, signal);
   if (!res || res.ok !== true || !res.value) {
-    throw new Error('读取完整文件失败：' + msgOf(res && res.error ? res.error : res));
+    throw new Error(tpl('err.read-failed', { err: msgOf(res && res.error ? res.error : res) }));
   }
   const v = res.value;
   const bytes = bytesOf(v.data);
-  if (!bytes) throw new Error('文件内容解码失败');
+  if (!bytes) throw new Error(tr('err.decode-failed'));
   let full;
-  try { full = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { throw new Error('非 UTF-8 文本文件，编辑可能损坏内容，已阻止'); }
+  try { full = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { throw new Error(tr('err.not-utf8')); }
   const norm = toEditorText(full);
   let mtimeMs = 0;
   try {
@@ -634,6 +774,22 @@ function SourceBody(props) {
     if (statusTimer.current) clearTimeout(statusTimer.current);
     statusTimer.current = setTimeout(() => setStatus(''), 4000);
   };
+  useEffect(() => {
+    sourceFlash = flash;
+    return () => { if (sourceFlash === flash) sourceFlash = null; };
+  });
+
+  /* 行末的「⋯」：设置面板（与官方视图、对比页用的是同一个）。 */
+  const settingsButton = function () {
+    return h('button', {
+      className: 'dshsp-btn dshsp-dots',
+      type: 'button',
+      title: label('bar.settings.tip'),
+      'aria-label': label('bar.settings'),
+      'data-dshsp-settings': '1',
+      onClick: function () { if (settingsOpener) settingsOpener('source'); },
+    }, '⋯');
+  };
 
   const attachScrollport = function (el) {
     scrollerEl.current = el;
@@ -648,7 +804,7 @@ function SourceBody(props) {
   /* 官方按「整包字节」给内容时本视图只认文本分页 → 兜底：UTF-8 解得出就当文本显示，解不出明确提示。 */
   const bytesText = useMemo(() => {
     if (!content || content.kind !== 'bytes') return '';
-    try { return new TextDecoder('utf-8', { fatal: true }).decode(content.data); } catch (e) { return '（该文件不是文本，无法在此视图显示）'; }
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(content.data); } catch (e) { return label('flash.not-text'); }
   }, [content]);
   const text = override != null ? override : (isText ? content.text : bytesText);
   const lines = useMemo(() => splitLines(text), [text]);
@@ -735,15 +891,15 @@ function SourceBody(props) {
         setMode('view');
         setConflict(false);
         setMeta((m) => (m ? Object.assign({}, m, { mtimeMs: r.mtimeMs }) : m));
-        flash('已保存 ' + humanBytes(r.bytes) + (r.backup ? '（旧版已自动备份）' : ''));
+        flash(tpl('flash.saved', { size: humanBytes(r.bytes), bak: r.backup ? tr('flash.bak-note') : '' }));
         return true;
       }
       if (r && r.error === 'changed') {
         setConflict(true);
-        flash('文件在别处被改过，请选择：');
+        flash(label('flash.changed'));
         return false;
       }
-      flash('保存失败：' + msgOf(r && r.error ? r.error : r));
+      flash(tpl('flash.save-failed', { err: msgOf(r && r.error ? r.error : r) }));
       return false;
     } finally {
       setBusy(false);
@@ -752,7 +908,7 @@ function SourceBody(props) {
 
   const exitEdit = function () {
     if (draft !== draftInit && typeof window !== 'undefined' && window.confirm) {
-      if (!window.confirm('有未保存的修改，确定放弃并退出编辑吗？')) return;
+      if (!window.confirm(label('confirm.discard'))) return;
     }
     setMode('view');
     setConflict(false);
@@ -764,7 +920,7 @@ function SourceBody(props) {
     try {
       applyLoaded(await readFileNow());
       setOverride(null);
-      flash('已重载磁盘最新内容');
+      flash(label('flash.reloaded'));
       setMode('edit');
     } catch (e) {
       flash(msgOf(e));
@@ -783,13 +939,14 @@ function SourceBody(props) {
     if (typeof window === 'undefined') return;
     const onKey = function (e) {
       try {
+        if (document.querySelector('.dshsp-modal')) return;   /* 备份弹框开着：快捷键归它管，别在这儿存文件 */
         const el = scrollerEl.current;
         if (!el || el.offsetParent === null || !el.isConnected) return;
         const a = actions.current;
         const ctrl = e.ctrlKey || e.metaKey;
         if (ctrl && !e.altKey && (e.key === 'f' || e.key === 'F')) {
           e.preventDefault(); e.stopPropagation();
-          if (a.mode === 'edit') { flash('请先退出编辑再搜索'); return; }
+          if (a.mode === 'edit') { flash(label('flash.exit-edit-first')); return; }
           a.openFind();
           return;
         }
@@ -856,7 +1013,8 @@ function SourceBody(props) {
               h('button', { className: 'dshsp-btn dshsp-conflict', type: 'button', disabled: busy, onClick: () => doSave(true) }, label('bar.forcedit')),
               h('button', { className: 'dshsp-btn dshsp-conflict', type: 'button', disabled: busy, onClick: reloadLatest }, label('bar.reload')))
           : null,
-        h('span', { className: 'dshsp-status' }, status)
+        h('span', { className: 'dshsp-status' }, status),
+        settingsButton()
       ),
       h('div', { className: 'dshsp-editrow' },
         h('div', { className: 'dshsp-egut', ref: egutEl }, gut),
@@ -906,7 +1064,8 @@ function SourceBody(props) {
         h('button', { className: 'dshsp-btn dshsp-btn-primary', type: 'button', disabled: busy, onClick: startEdit }, label('bar.edit')),
         h('button', { className: 'dshsp-btn', type: 'button', disabled: busy, onClick: openFind }, label('bar.find')),
         fontControls(),
-        h('span', { className: 'dshsp-status' }, status)
+        h('span', { className: 'dshsp-status' }, status),
+        settingsButton()
       ),
       find.open
         ? h('div', { className: 'dshsp-find' },
@@ -1070,6 +1229,7 @@ function enhanceStart() {
   if (enh) return;
   if (typeof document === 'undefined' || !document.body) { if (typeof setTimeout === 'function') setTimeout(enhanceStart, 500); return; }
   try { const legacy = document.querySelector('style[data-plugin-css="dsh-sidebar-plus-official"]'); if (legacy) legacy.remove(); } catch (e) { } // 清理历史版本注入过的样式
+  settingsOpener = openBackupModal;   /* 源编辑视图行末的「⋯」也开这个面板 */
 
   let attachedPane = null;
   let msgTimer = null;
@@ -1103,7 +1263,7 @@ function enhanceStart() {
       const n = parseInt(inp.value, 10);
       if (!ta || !Number.isFinite(n) || n < 1) return;
       const at = caretToLine(ta, n);
-      flash('已跳到第 ' + at + ' 行');
+      flash(tpl('flash.jumped', { n: at }));
       inp.value = '';
     };
     inp.addEventListener('keydown', function (e) {
@@ -1234,15 +1394,15 @@ function enhanceStart() {
       const pane = cur.pane;
       if (pane.getAttribute('data-document-preview') === SELF_ID) { pendingEdit = true; return; }
       const menuBtn = pane.querySelector('[data-document-viewer-menu]');
-      if (!menuBtn) { barFlash('请先切到「源编辑」视图'); return; }
+      if (!menuBtn) { barFlash(tr('flash.need-source')); return; }
       menuBtn.click();
       await sleep(250);
       const item = [...document.querySelectorAll('button,[role="menuitem"],[role="option"]')]
         .find((el) => (((el.textContent || '').trim() === TITLE || (el.textContent || '').trim() === en['viewer.label']) && el !== menuBtn && !(el.closest && el.closest('[data-dshsp-official]'))));
-      if (!item) { barFlash('请先切到「源编辑」视图'); return; }
+      if (!item) { barFlash(tr('flash.need-source')); return; }
       pendingEdit = true;
       item.click();
-    } catch (e) { barFlash('切换失败，请手动选「源编辑」'); }
+    } catch (e) { barFlash(tr('flash.switch-failed')); }
   }
   function baseEl() {
     const cur = paneNow();
@@ -1335,7 +1495,7 @@ function enhanceStart() {
       ipRenderGutter();
       ipSyncUi();
       caretToLine(ta, 1);
-      barFlash('编辑中：Ctrl+S 保存，Esc 退出');
+      barFlash(tr('flash.editing'));
     } catch (e) {
       barFlash(msgOf(e));
     } finally {
@@ -1345,7 +1505,7 @@ function enhanceStart() {
   function exitInplace(force) {
     if (!ip.active) return;
     if (!force && ip.dirty && typeof window !== 'undefined' && window.confirm) {
-      if (!window.confirm('有未保存的修改，确定放弃并退出编辑吗？')) return;
+      if (!window.confirm(tr('confirm.discard'))) return;
     }
     try { if (ip.wrap && ip.wrap.parentNode) ip.wrap.remove(); } catch (e) { }
     try { if (ip.body) ip.body.style.display = ''; } catch (e) { }
@@ -1364,19 +1524,19 @@ function enhanceStart() {
         ip.dirty = false;
         ip.conflict = false;
         ipSyncUi();
-        barFlash('已保存 ' + humanBytes(r.bytes) + (r.backup ? '（旧版已自动备份）' : ''));
+        barFlash(tpl('flash.saved', { size: humanBytes(r.bytes), bak: r.backup ? tr('flash.bak-note') : '' }));
         try { const rb = document.querySelector('[data-textpreview-tool="reload"]'); if (rb) rb.click(); } catch (e) { }
         return;
       }
       if (r && r.error === 'changed') {
         ip.conflict = true;
         ipSyncUi();
-        barFlash('文件在别处被改过，请选择：');
+        barFlash(tr('flash.changed'));
         return;
       }
-      barFlash('保存失败：' + msgOf(r && r.error ? r.error : r));
+      barFlash(tpl('flash.save-failed', { err: msgOf(r && r.error ? r.error : r) }));
     } catch (e) {
-      barFlash('保存失败：' + msgOf(e));
+      barFlash(tpl('flash.save-failed', { err: msgOf(e) }));
     } finally {
       ip.busy = false;
     }
@@ -1396,7 +1556,7 @@ function enhanceStart() {
       ip.conflict = false;
       ipRenderGutter();
       ipSyncUi();
-      barFlash('已重载磁盘最新内容');
+      barFlash(tr('flash.reloaded'));
     } catch (e) {
       barFlash(msgOf(e));
     } finally {
@@ -1421,6 +1581,10 @@ function enhanceStart() {
   forceBtn.className = 'dshsp-btn dshsp-conflict';
   const reloadBtn = mkBtn(tr('bar.reload'), tr('bar.reload.tip'), () => reloadLatest());
   reloadBtn.className = 'dshsp-btn dshsp-conflict';
+  const backupBtn = mkBtn('⋯', tr('bar.settings.tip'), function () { openBackupModal('doc'); });
+  backupBtn.className = 'dshsp-btn dshsp-dots';
+  backupBtn.setAttribute('data-dshsp-settings', '1');
+  backupBtn.setAttribute('aria-label', tr('bar.settings'));
   bar.appendChild(editBtn);
   bar.appendChild(saveBtn);
   bar.appendChild(exitBtn);
@@ -1433,6 +1597,7 @@ function enhanceStart() {
   bar.appendChild(forceBtn);
   bar.appendChild(reloadBtn);
   bar.appendChild(status);
+  bar.appendChild(backupBtn);   /* 设置（⋯）放整行最后 */
   saveBtn.style.display = 'none';
   exitBtn.style.display = 'none';
   forceBtn.style.display = 'none';
@@ -1560,6 +1725,10 @@ function enhanceStart() {
   rForceBtn.className = 'dshsp-btn dshsp-conflict';
   const rReloadBtn = mkBtn(tr('bar.reload'), tr('bar.reload.tip'), () => rvReload());
   rReloadBtn.className = 'dshsp-btn dshsp-conflict';
+  const rBackupBtn = mkBtn('⋯', tr('bar.settings.tip'), function () { openBackupModal('review'); });
+  rBackupBtn.className = 'dshsp-btn dshsp-dots';
+  rBackupBtn.setAttribute('data-dshsp-settings', '1');
+  rBackupBtn.setAttribute('aria-label', tr('bar.settings'));
   const rvLabel = function (key, fallback) {
     return tr(key, fallback);
   };
@@ -1581,11 +1750,296 @@ function enhanceStart() {
   rbar.appendChild(rForceBtn);
   rbar.appendChild(rReloadBtn);
   rbar.appendChild(rstatus);
+  rbar.appendChild(rBackupBtn);   /* 设置（⋯）放整行最后 */
   rvTitles();
   rSaveBtn.style.display = 'none';
   rExitBtn.style.display = 'none';
   rForceBtn.style.display = 'none';
   rReloadBtn.style.display = 'none';
+
+  /* ---------- 备份路径设置：工具条按钮 → 设置面板 → 试算 → 确认移动 ----------
+     弹框自己造 DOM、挂到 document.body；同一时刻只留一个；关掉必须从 DOM 移除。
+     打开时记住是哪个工具条点的，成功后就闪哪一条的状态区（barFlash / rvFlash）。 */
+  const backupUi = {
+    root: null, cur: null, input: null, hint: null, msg: null,
+    confirm: null, confirmBody: null, which: 'doc',
+    current: '', defaultDir: '', pending: null, busy: false, keyBound: false, gen: 0,
+  };
+
+  /* Windows 大小写不敏感、/ 与 \ 等价、末尾斜杠不算差别。 */
+  function backupNormPath(p) {
+    return String(p == null ? '' : p).trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  }
+
+  /* 长路径别把末尾的词从中间劈开：在每个 \ / 之后插一个可断点，换行优先落在分隔符处。 */
+  function setPathText(el, text) {
+    if (!el) return;
+    const s = String(text == null ? '' : text);
+    el.textContent = '';
+    const frag = document.createDocumentFragment();
+    let start = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '\\' || ch === '/') {
+        frag.appendChild(document.createTextNode(s.slice(start, i + 1)));
+        frag.appendChild(document.createElement('wbr'));
+        start = i + 1;
+      }
+    }
+    frag.appendChild(document.createTextNode(s.slice(start)));
+    el.appendChild(frag);
+  }
+
+  function backupErrText(r) {
+    const code = (r && r.error != null) ? String(r.error) : '';
+    if (!code) return tpl('backup.failed', { err: 'unknown' });
+    const known = tr('backup.err.' + code, '');
+    return known || tpl('backup.failed', { err: code });
+  }
+
+  function backupSetMsg(text) {
+    setPathText(backupUi.msg, text);
+  }
+
+  function backupShowConfirm(on) {
+    if (backupUi.confirm) backupUi.confirm.style.display = on ? 'flex' : 'none';
+  }
+
+  function backupOnKey(e) {
+    try {
+      if (!backupUi.root) return;
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeBackupModal(); }
+    } catch (err) { }
+  }
+
+  function closeBackupModal() {
+    backupUi.gen++;   /* 关掉就算翻篇：在途请求回来时不许再动界面 */
+    if (backupUi.keyBound) {
+      backupUi.keyBound = false;
+      try { window.removeEventListener('keydown', backupOnKey, true); } catch (e) { }
+    }
+    const root = backupUi.root;
+    backupUi.root = null;
+    backupUi.cur = null;
+    backupUi.input = null;
+    backupUi.hint = null;
+    backupUi.msg = null;
+    backupUi.confirm = null;
+    backupUi.confirmBody = null;
+    backupUi.pending = null;
+    backupUi.busy = false;
+    if (root) { try { if (root.parentNode) root.parentNode.removeChild(root); } catch (e) { } }
+  }
+
+  async function backupPost(body) {
+    return fetch('/dsh-sp/config', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((x) => x.json()).catch((e) => ({ ok: false, error: 'network:' + msgOf(e) }));
+  }
+
+  /* 读当前路径与默认路径：读不到也照常开框（当前路径留空，保存时报错），绝不抛。 */
+  async function backupLoad() {
+    if (!backupUi.root) return;
+    const gen = backupUi.gen;
+    let r = null;
+    try {
+      r = await fetch('/dsh-sp/config', { cache: 'no-store' }).then((x) => x.json()).catch(() => null);
+    } catch (e) { r = null; }
+    if (gen !== backupUi.gen || !backupUi.root) return;
+    const good = !!(r && r.ok === true);
+    const dir = (good && r.backupDir != null) ? String(r.backupDir) : '';
+    const def = (good && r.defaultDir != null) ? String(r.defaultDir) : '';
+    backupUi.current = dir;
+    backupUi.defaultDir = def;
+    if (backupUi.input && !backupUi.input.value) backupUi.input.value = dir;
+    if (backupUi.cur) setPathText(backupUi.cur, tr('backup.current') + (dir ? ' ' + dir : ''));
+    if (backupUi.hint) setPathText(backupUi.hint, tpl('backup.hint', { default: def }));
+  }
+
+  function openBackupModal(which) {
+    if (backupUi.root) return;   // 同一时刻只允许一个
+    backupUi.gen++;              // 每开一次翻一个世代号
+    try {
+      const root = document.createElement('div');
+      root.className = 'dshsp-modal';
+      const box = document.createElement('div');
+      box.className = 'dshsp-modal-box';
+      const title = document.createElement('div');
+      title.className = 'dshsp-modal-title';
+      title.textContent = tr('settings.title');
+      const sec = document.createElement('div');
+      sec.className = 'dshsp-modal-sec';
+      sec.textContent = tr('settings.backup');
+      const cur = document.createElement('div');
+      cur.className = 'dshsp-modal-cur';
+      cur.textContent = tr('backup.current');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'dshsp-modal-input';
+      input.placeholder = tr('backup.holder');
+      const hint = document.createElement('div');
+      hint.className = 'dshsp-modal-hint';
+      hint.textContent = tr('backup.loading');
+      const msg = document.createElement('div');
+      msg.className = 'dshsp-modal-msg';
+      const actions = document.createElement('div');
+      actions.className = 'dshsp-modal-actions';
+      const saveBtn2 = mkBtn(tr('backup.save'), tr('backup.save'), onBackupSave);
+      saveBtn2.className = 'dshsp-btn dshsp-modal-save';
+      const resetBtn2 = mkBtn(tr('backup.reset'), tr('backup.reset'), onBackupReset);
+      resetBtn2.className = 'dshsp-btn dshsp-modal-reset';
+      const cancelBtn2 = mkBtn(tr('backup.cancel'), tr('backup.cancel'), closeBackupModal);
+      cancelBtn2.className = 'dshsp-btn dshsp-modal-cancel';
+      actions.appendChild(saveBtn2);
+      actions.appendChild(resetBtn2);
+      actions.appendChild(cancelBtn2);
+      const confirm = document.createElement('div');
+      confirm.className = 'dshsp-modal-confirm';
+      confirm.style.display = 'none';
+      const cTitle = document.createElement('div');
+      cTitle.className = 'dshsp-modal-confirm-title';
+      cTitle.textContent = tr('backup.confirm.title');
+      const cBody = document.createElement('div');
+      cBody.className = 'dshsp-modal-confirm-body';
+      const cActions = document.createElement('div');
+      cActions.className = 'dshsp-modal-confirm-actions';
+      const okBtn2 = mkBtn(tr('backup.ok'), tr('backup.ok'), onBackupConfirm);
+      okBtn2.className = 'dshsp-btn dshsp-modal-ok';
+      const ccancelBtn2 = mkBtn(tr('backup.cancel'), tr('backup.cancel'), function () { backupShowConfirm(false); });
+      ccancelBtn2.className = 'dshsp-btn dshsp-modal-confirm-cancel';
+      cActions.appendChild(okBtn2);
+      cActions.appendChild(ccancelBtn2);
+      confirm.appendChild(cTitle);
+      confirm.appendChild(cBody);
+      confirm.appendChild(cActions);
+      box.appendChild(title);
+      box.appendChild(sec);
+      box.appendChild(cur);
+      box.appendChild(input);
+      box.appendChild(hint);
+      box.appendChild(msg);
+      box.appendChild(actions);
+      box.appendChild(confirm);
+      root.appendChild(box);
+      root.addEventListener('click', function (e) { if (e.target === root) closeBackupModal(); });
+      backupUi.root = root;
+      backupUi.cur = cur;
+      backupUi.input = input;
+      backupUi.hint = hint;
+      backupUi.msg = msg;
+      backupUi.confirm = confirm;
+      backupUi.confirmBody = cBody;
+      backupUi.which = (which === 'review' || which === 'source') ? which : 'doc';
+      backupUi.current = '';
+      backupUi.defaultDir = '';
+      backupUi.pending = null;
+      backupUi.busy = false;
+      document.body.appendChild(root);
+      if (!backupUi.keyBound) {
+        backupUi.keyBound = true;
+        try { window.addEventListener('keydown', backupOnKey, true); } catch (e) { }
+      }
+      try { input.focus(); input.select(); } catch (e) { }
+      backupLoad();
+    } catch (e) {
+      try { closeBackupModal(); } catch (e2) { }
+    }
+  }
+
+  function onBackupSave() {
+    if (!backupUi.root || backupUi.busy) return;
+    const raw = String(backupUi.input ? backupUi.input.value : '').trim();
+    backupShowConfirm(false);
+    backupUi.pending = null;
+    backupSetMsg('');
+    if (!raw) { backupSetMsg(tr('backup.err.empty-path')); return; }
+    if (backupUi.current && backupNormPath(raw) === backupNormPath(backupUi.current)) {
+      backupSetMsg(tr('backup.same'));
+      return;
+    }
+    backupDryRun({ backupDir: raw });
+  }
+
+  function onBackupReset() {
+    if (!backupUi.root || backupUi.busy) return;
+    backupShowConfirm(false);
+    backupUi.pending = null;
+    backupSetMsg('');
+    /* 已经在默认目录上时别再弹「从 X 改为 X」：直接说已经在默认路径。 */
+    if (backupUi.defaultDir && backupNormPath(backupUi.current) === backupNormPath(backupUi.defaultDir)) {
+      backupSetMsg(tr('backup.alreadyDefault'));
+      return;
+    }
+    backupDryRun({ reset: true });
+  }
+
+  /* 试算：成功按 willMove 出确认区，失败只写错误、不出确认区。 */
+  async function backupDryRun(payload) {
+    if (!backupUi.root) return;
+    const gen = backupUi.gen;
+    backupUi.busy = true;
+    backupSetMsg(tr('backup.loading'));
+    try {
+      const r = await backupPost(payload);
+      if (gen !== backupUi.gen || !backupUi.root) return;
+      if (!r || r.ok !== true) { backupSetMsg(backupErrText(r)); return; }
+      const from = (r.from != null) ? String(r.from) : String(backupUi.current || '');
+      let to = (r.to != null) ? String(r.to) : '';
+      if (!to) to = payload.reset ? String(backupUi.defaultDir || '') : String(payload.backupDir || '');
+      const n = Number(r.willMove) || 0;
+      /* 服务端说「新路径＝当前路径」时不出确认区，免得弹出「从 X 改为 X」。 */
+      if (backupNormPath(to) && backupNormPath(to) === backupNormPath(from)) {
+        backupUi.pending = null;
+        backupShowConfirm(false);
+        backupSetMsg(tr('backup.same'));
+        return;
+      }
+      backupUi.pending = payload;
+      if (backupUi.confirmBody) {
+        setPathText(backupUi.confirmBody, (n > 0)
+          ? tpl('backup.confirm.body', { from: from, to: to, n: n })
+          : tpl('backup.confirm.none', { from: from, to: to }));
+      }
+      backupSetMsg('');
+      backupShowConfirm(true);
+    } catch (e) {
+      if (gen === backupUi.gen && backupUi.root) backupSetMsg(tpl('backup.failed', { err: msgOf(e) }));
+    } finally {
+      if (gen === backupUi.gen) backupUi.busy = false;
+    }
+  }
+
+  async function onBackupConfirm() {
+    if (!backupUi.root || backupUi.busy || !backupUi.pending) return;
+    const which = backupUi.which;
+    const gen = backupUi.gen;
+    backupUi.busy = true;
+    try {
+      const payload = Object.assign({}, backupUi.pending, { confirm: true });
+      const r = await backupPost(payload);
+      if (gen !== backupUi.gen || !backupUi.root) return;
+      if (!r || r.ok !== true) {
+        /* 配置写失败时文件其实已经搬走了，必须说清楚，别让用户以为什么都没发生。 */
+        const mv = Number(r && r.moved) || 0;
+        backupSetMsg(mv > 0 ? tpl('backup.movedThenFailed', { moved: mv }) : backupErrText(r));
+        return;
+      }
+      const n = Number(r.moved) || 0;
+      const bad = Number(r.failed) || 0;
+      closeBackupModal();
+      /* 个别文件没搬成要说出来：备份还在旧文件夹，不声不响会让人以为搬全了。 */
+      const note = bad > 0 ? tpl('backup.moved.partial', { n: n, f: bad }) : tpl('backup.moved', { n: n });
+      if (which === 'review') rvFlash(note);
+      else if (which === 'source') { if (sourceFlash) sourceFlash(note); }
+      else barFlash(note);
+    } catch (e) {
+      if (gen === backupUi.gen && backupUi.root) backupSetMsg(tpl('backup.failed', { err: msgOf(e) }));
+    } finally {
+      if (gen === backupUi.gen) backupUi.busy = false;
+    }
+  }
 
   const rInput = document.createElement('input');
   rInput.type = 'text';
@@ -1725,6 +2179,8 @@ function enhanceStart() {
     rFindBtn.style.display = on ? 'none' : '';
     rvJump.box.style.display = on ? '' : 'none';
     setText(rSaveBtn, tr('bar.save') + (rved.dirty ? ' *' : ''));
+    rBackupBtn.title = tr('bar.settings.tip');
+    rBackupBtn.setAttribute('aria-label', tr('bar.settings'));
     rfindRow.style.display = (rvff.open && !on) ? 'flex' : 'none';
   }
 
@@ -1769,7 +2225,7 @@ function enhanceStart() {
       for (const el of marked) el.classList.remove('dshsp-anchor');
       target.classList.add('dshsp-anchor');
     } catch (e) { }
-    rvFlash('已选定第 ' + n + ' 行：点「编辑右侧」就从这一行开始');
+    rvFlash(tpl('rv.picked', { n: n }));
   }
 
   /* 没点过行时的兜底：取右栏可视区中间那一行的行号。 */
@@ -1833,8 +2289,8 @@ function enhanceStart() {
     if (rved.active || rved.busy) return;
     let caps = rvSource();
     if (!caps) return;
-    if (!caps.address) { rvFlash('无法定位文件（缺少会话或路径）'); return; }
-    if (rvBinaryNow()) { rvFlash('该格式不是文本文件（Office / 表格 / PDF 等），不能用文本编辑器改'); return; }
+    if (!caps.address) { rvFlash(tr('rv.no-target')); return; }
+    if (rvBinaryNow()) { rvFlash(tr('rv.binary')); return; }
     rved.busy = true;
     try {
       if (!caps.right) {
@@ -1847,7 +2303,7 @@ function enhanceStart() {
       const ta = rvBuildEditor(caps, r);
       const want = rvAnchorLine || rvCenterLine() || 1;
       const at = caretToLine(ta, want);
-      if (at > 1 && want > 1) rvFlash('已定位到第 ' + at + ' 行（左侧是历史对照，只读）；Ctrl+S 保存，Esc 退出');
+      if (at > 1 && want > 1) rvFlash(tpl('rv.located', { n: at }));
       else rvFlash(rvLabel('rv.editing', '编辑中：只改右侧的当前文件，左侧只读；Ctrl+S 保存，Esc 退出'));
     } catch (e) {
       rvFlash(msgOf(e));
@@ -1858,7 +2314,7 @@ function enhanceStart() {
   function rvExitEdit(force) {
     if (!rved.active) return;
     if (!force && rved.dirty && typeof window !== 'undefined' && window.confirm) {
-      if (!window.confirm('有未保存的修改，确定放弃并退出编辑吗？')) return;
+      if (!window.confirm(tr('confirm.discard'))) return;
     }
     try { if (rved.box && rved.box.parentNode) rved.box.remove(); } catch (e) { }
     try { if (rved.hide) rved.hide.style.display = ''; } catch (e) { }
@@ -1877,18 +2333,18 @@ function enhanceStart() {
         rved.dirty = false;
         rved.conflict = false;
         rvSyncUi();
-        rvFlash('已保存 ' + humanBytes(r.bytes) + (r.backup ? '（旧版已自动备份）' : '') + '；' + rvLabel('rv.saved', '左侧对比是历史快照，不会随之更新'));
+        rvFlash(tpl('rv.saved-flash', { size: humanBytes(r.bytes), bak: r.backup ? tr('flash.bak-note') : '', note: rvLabel('rv.saved', '左侧对比是历史快照，不会随之更新') }));
         return;
       }
       if (r && r.error === 'changed') {
         rved.conflict = true;
         rvSyncUi();
-        rvFlash('文件在别处被改过，请选择：');
+        rvFlash(tr('flash.changed'));
         return;
       }
-      rvFlash('保存失败：' + msgOf(r && r.error ? r.error : r));
+      rvFlash(tpl('flash.save-failed', { err: msgOf(r && r.error ? r.error : r) }));
     } catch (e) {
-      rvFlash('保存失败：' + msgOf(e));
+      rvFlash(tpl('flash.save-failed', { err: msgOf(e) }));
     } finally {
       rved.busy = false;
     }
@@ -1898,7 +2354,7 @@ function enhanceStart() {
     rved.busy = true;
     try {
       const caps = rvSource();
-      if (!caps || !caps.address) throw new Error('无法定位文件');
+      if (!caps || !caps.address) throw new Error(tr('err.no-file'));
       const r = await readWholeText(caps.address);
       const keep = lineOfCaret(rved.ta);
       rved.init = r.text;
@@ -1911,7 +2367,7 @@ function enhanceStart() {
       rvRenderGutter();
       rvSyncUi();
       caretToLine(rved.ta, keep);
-      rvFlash('已重载磁盘最新内容');
+      rvFlash(tr('flash.reloaded'));
     } catch (e) {
       rvFlash(msgOf(e));
     } finally {
@@ -2028,6 +2484,8 @@ function enhanceStart() {
     const isPlain = !!cur.body.querySelector('[data-textpreview-plain]');
     linenoBtn.style.display = (isPlain && !ip.active) ? '' : 'none';
     setText(linenoBtn, tr('bar.lineno'));
+    backupBtn.title = tr('bar.settings.tip');
+    backupBtn.setAttribute('aria-label', tr('bar.settings'));
     linenoBtn.className = plainLineNo ? 'dshsp-btn dshsp-btn-on' : 'dshsp-btn';
     try {
       if (isPlain && plainLineNo) {
@@ -2061,6 +2519,7 @@ function enhanceStart() {
   }
   const onKey = function (e) {
     try {
+      if (document.querySelector('.dshsp-modal')) return;   /* 备份弹框开着：快捷键归它管，别在这儿存文件 */
       const rv = rvBodyNow();
       if (rv) {
         const doc = paneNow();
@@ -2173,6 +2632,8 @@ function enhanceStart() {
       try { rvExitEdit(true); } catch (e) { }
       try { group.remove(); } catch (e) { }
       try { rgroup.remove(); } catch (e) { }
+      try { closeBackupModal(); } catch (e) { }
+      if (settingsOpener === openBackupModal) settingsOpener = null;
       if (rvRoot) {
         try { rvRoot.removeAttribute('data-dshsp-rv'); rvRoot.style.removeProperty('--dshsp-rvz'); } catch (e) { }
       }
@@ -2233,6 +2694,7 @@ return {
     humanBytes: humanBytes,
     bytesOf: bytesOf,
     tr: tr,
+    tpl: tpl,
     uiIsEn: uiIsEn,
     pathSuffix: pathSuffix,
     isBinaryPath: isBinaryPath,

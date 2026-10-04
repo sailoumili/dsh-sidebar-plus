@@ -54,16 +54,34 @@ win.TextDecoder = TextDecoder
 win.TextEncoder = TextEncoder
 win.AbortController = AbortController
 
-// ---- fetch 桩：stat/save/rev/pull/ping ----
+// ---- fetch 桩：stat/save/rev/pull/ping + 备份路径配置（GET 读 / POST 试算·执行·重置） ----
 const fetchCalls = []
+// 备份路径接口的调用台账：url / method / body 三样都记，供断言
+const configCalls = []
 let saveResponse = () => ({ ok: true, mtimeMs: 2000, bytes: MD.length + 20, backup: null })
+// 假路径拼接构造：避免字面量被当成真实路径登记
+const BACKUP_DIR = ['Z:', '', 'fake', 'backups'].join(path.sep)
+const BACKUP_DEFAULT = ['Z:', '', 'fake', 'default-backups'].join(path.sep)
+const BACKUP_NEW = ['Z:', '', 'fake', 'new-backups'].join(path.sep)
+let configGetResponse = () => ({ ok: true, backupDir: BACKUP_DIR, defaultDir: BACKUP_DEFAULT, isDefault: false, exists: true, backupCount: 3 })
+let configPostResponse = (body) => {
+  if (body && body.confirm) return { ok: true, backupDir: body.reset ? BACKUP_DEFAULT : body.backupDir, moved: 2, failed: 0, skipped: 0, backupCount: 5 }
+  if (body && body.reset) return { ok: true, dryRun: true, from: BACKUP_DIR, to: BACKUP_DEFAULT, willMove: 2, skipped: 0, toExists: true, toBackupCount: 1, isDefault: true }
+  return { ok: true, dryRun: true, from: BACKUP_DIR, to: (body && body.backupDir) || '', willMove: 2, skipped: 0, toExists: false, toBackupCount: 0, isDefault: false }
+}
 const HOT_CLIENT_SRC = fs.readFileSync(path.join(root, 'hot-client.cjs'), 'utf8')
-// 假路径拼接构造：别让查引用扫描器把字面量当真引用登记
+// 假路径拼接构造：避免字面量被当成真实路径登记
 const FAKE_ABS = ['Z:', '', 'fake', 'sb.md'].join(path.sep)
 win.fetch = async (url, init) => {
   const u = String(url)
+  const method = String((init && init.method) || 'GET').toUpperCase()
   fetchCalls.push({ url: u, init })
   const json = async (v) => ({ json: async () => v })
+  if (u.startsWith('/dsh-sp/config')) {
+    const body = (method === 'POST' && init && init.body) ? JSON.parse(String(init.body)) : null
+    configCalls.push({ url: u, method, body })
+    return json(method === 'POST' ? configPostResponse(body) : configGetResponse())
+  }
   if (u.startsWith('/dsh-sp/stat')) return json({ ok: true, abs: FAKE_ABS, mtimeMs: 1000, bytes: MD.length })
   if (u.startsWith('/dsh-sp/save')) return json(saveResponse())
   if (u.startsWith('/dsh-sp/rev')) return json({ ok: true, h: 'hh', c: 'rev-1' })
@@ -94,7 +112,7 @@ const ENV_REMOTE = {
 }
 const ENV_PREVIEWS = { value: null }   // 照加载器的活引用形状：业务件按引用读，测试可随时换桩
 const bus = api._test.compileBus(HOT_CLIENT_SRC, { react: React, remote: ENV_REMOTE, previews: ENV_PREVIEWS })
-ok(bus.version === '0.4.3', '业务经 compileBus 就绪', bus.version)
+ok(bus.version === '0.4.4', '业务经 compileBus 就绪', bus.version)
 const b1 = bus._test.bytesOf(MD_BYTES)
 const b2 = bus._test.bytesOf(MD_B64)
 const b3 = bus._test.bytesOf(MD_BYTES.buffer)
@@ -132,9 +150,23 @@ ok(q('[data-textpreview-line="1"]') && q('[data-textpreview-line="5"]'), '5 行�
 ok(q('[data-textpreview-line="1"] .dshsp-ln').textContent === '1', '行号列文字正确')
 ok(q('[data-textpreview-line="1"]').className.includes('dshsp-h1'), '标题行有着色类')
 ok(q('.dshsp-b') && q('.dshsp-task'), '加粗/任务着色在位')
-ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.3', '业务版本标记在 DOM 上（热替换观测点）')
+ok(q('.dshsp-root').getAttribute('data-dshsp-ver') === '0.4.4', '业务版本标记在 DOM 上（热替换观测点）')
 const btns = () => [...qa('.dshsp-bar button')]
 ok(btns().some((b) => b.textContent.includes('编辑')), '工具栏有「编辑」按钮（无 t 时走中文兜底字典）')
+{
+  const last = btns()[btns().length - 1]
+  ok(!!last && last.getAttribute('data-dshsp-settings') === '1' && last.textContent.trim() === '⋯' && last.title === '设置（备份路径）',
+    '源编辑视图行末也有「⋯」设置按钮', last && (last.textContent + ' | ' + last.title))
+  await act(async () => { last.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+  await act(async () => { await new Promise((r) => setTimeout(r, 60)) })
+  const sm = win.document.body.querySelector('.dshsp-modal')
+  ok(!!sm && sm.querySelector('.dshsp-modal-title').textContent === '设置' && !!sm.querySelector('.dshsp-modal-sec')
+    && sm.querySelector('.dshsp-modal-sec').textContent === '备份路径',
+    '源编辑视图点「⋯」能开设置面板（标题「设置」+ 小节「备份路径」）', sm && sm.querySelector('.dshsp-modal-title').textContent)
+  ok(win.document.body.querySelectorAll('.dshsp-modal').length === 1, '同一时刻只开一个面板')
+  await act(async () => { sm.querySelector('.dshsp-modal-cancel').dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+  ok(!win.document.body.querySelector('.dshsp-modal'), '取消后关掉，不留节点')
+}
 {
   win.document.documentElement.lang = 'en';
   await act(async () => { root_.render(React.createElement(bus.Body, props)) });
@@ -187,6 +219,8 @@ ok(!q('.dshsp-find'), '搜索框里 Esc 关闭')
 const editBtn = btns().find((b) => b.textContent.includes('编辑'))
 await act(async () => { editBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
 ok(!!q('textarea.dshsp-ta'), '进编辑：整文件进 textarea')
+ok((() => { const b = btns(); const l = b[b.length - 1]; return !!l && l.getAttribute('data-dshsp-settings') === '1' && l.textContent.trim() === '⋯' })(),
+  '源编辑视图的编辑态工具条行末也有「⋯」')
 ok(q('textarea.dshsp-ta').value === MD, '编辑初始内容 = workspaceFiles.readBytes 的整文件')
 ok(remoteCalls.readBytes.length === 1 && remoteCalls.readBytes[0].path === 'temp/sb.md' && remoteCalls.readBytes[0].hasSignal === true,
   '整文件读取走新版 readBytes(会话, 相对路径, {}, 取消信号)', JSON.stringify(remoteCalls.readBytes[0] || {}))
@@ -238,7 +272,7 @@ await act(async () => root_.unmount())
   obody.textContent = '样例 可搜文本 searchable now\n第二行 样例 again'
   pane.appendChild(obody)
   win.document.body.appendChild(pane)
-  // 立刻量：面板进 DOM 后工具条多久挂上（旧实现是每 0.4 秒轮询，最坏要等 0.4s）
+  // 立刻量：面板进 DOM 后工具条多久挂上
   const tMount = Date.now()
   await act(async () => { await new Promise((r) => setTimeout(r, 120)) })
   let ogroup = pane.querySelector(':scope > .dshsp-ogroup')
@@ -836,9 +870,400 @@ await act(async () => root_.unmount())
     ok(!win.document.querySelector('.dshsp-ogroup'), '4.11 收尾：不留野节点')
   }
 
+  // ================= 4.12) 备份路径设置：工具条按钮 + 弹框 + 确认搬运 =================
+  {
+    const settle12 = async (ms) => { await act(async () => { await new Promise((r) => setTimeout(r, ms || 250)) }) }
+    const modalNow = () => win.document.body.querySelector('.dshsp-modal')
+    const cfgPosts = () => configCalls.filter((c) => c.method === 'POST')
+    const cfgConfirms = () => cfgPosts().filter((c) => c.body && c.body.confirm === true)
+    const setVal = (el, v) => {
+      const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set
+      setter.call(el, v)
+    }
+    const click12 = async (el) => { await act(async () => { el.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) }) }
+    const key12 = async (k) => { await act(async () => { win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })) }) }
+
+    // 文档工具条：官方纯文本面板
+    const dpane = win.document.createElement('div')
+    dpane.setAttribute('data-document-preview', 'official/plain')
+    dpane.setAttribute('data-textpreview-url', 'dsh-resource://file/session/s1/out/bk.md')
+    const dbody = win.document.createElement('div')
+    dbody.setAttribute('data-textpreview-body', 'true')
+    dbody.innerHTML = '<div data-textpreview-plain="true"><div data-textpreview-line="1">备份测试正文</div></div>'
+    dpane.appendChild(dbody)
+    win.document.body.appendChild(dpane)
+    // 对比页工具条
+    const rscope12 = win.document.createElement('div')
+    rscope12.setAttribute('data-sidebar-right-session', 's1')
+    const rroot12 = win.document.createElement('div')
+    rroot12.setAttribute('data-changes-review', '1')
+    const rhead12 = win.document.createElement('div')
+    const rf12 = win.document.createElement('button')
+    rf12.setAttribute('data-review-file', 'out/bk.md')
+    rhead12.appendChild(rf12)
+    rroot12.appendChild(rhead12)
+    const rbody12 = win.document.createElement('div')
+    rbody12.setAttribute('data-review-view', 'unified')
+    rbody12.textContent = '对比正文'
+    rroot12.appendChild(rbody12)
+    rscope12.appendChild(rroot12)
+    win.document.body.appendChild(rscope12)
+    await settle12(400)
+
+    const dgroup = dpane.querySelector(':scope > .dshsp-ogroup')
+    const rgroup12 = rroot12.querySelector(':scope > .dshsp-ogroup')
+    const dbackup = dgroup && dgroup.querySelector('[data-dshsp-settings="1"]')
+    const rbackup = rgroup12 && rgroup12.querySelector('[data-dshsp-settings="1"]')
+    const dstatus = dgroup && dgroup.querySelector('.dshsp-status')
+    const rstatus12 = rgroup12 && rgroup12.querySelector('.dshsp-status')
+
+    // ① 两个工具条各一个「⋯」设置按钮，都放整行最后
+    ok(!!dbackup && dbackup.className.includes('dshsp-btn') && dbackup.className.includes('dshsp-dots')
+      && dbackup.textContent.trim() === '⋯' && dbackup.title === '设置（备份路径）' && dbackup.getAttribute('aria-label') === '设置',
+      '文档工具条末尾出现「⋯」设置按钮（图标/提示/无障碍名齐）', dbackup && (dbackup.textContent + ' | ' + dbackup.title))
+    ok(!!rbackup && rbackup.textContent.trim() === '⋯' && rbackup.title === '设置（备份路径）',
+      '对比页工具条也有「⋯」设置按钮')
+    ok(!!dbackup && dbackup.parentElement.lastElementChild === dbackup,
+      '文档条位置：整行最后一个', dbackup && dbackup.parentElement.lastElementChild && dbackup.parentElement.lastElementChild.textContent.trim())
+    ok(!!rbackup && rbackup.parentElement.lastElementChild === rbackup, '对比条位置：整行最后一个')
+    win.document.documentElement.lang = 'en'
+    await settle12(1400)
+    ok(dbackup.title === 'Settings (backup folder)' && dbackup.getAttribute('aria-label') === 'Settings' && dbackup.textContent.trim() === '⋯',
+      '英文界面：提示与无障碍名切英文（图标不变）', dbackup.title)
+    win.document.documentElement.lang = 'zh-CN'
+    await settle12(1400)
+    ok(dbackup.title === '设置（备份路径）', '切回中文：提示恢复「设置（备份路径）」')
+
+    // ② 打开弹框
+    await click12(dbackup)
+    await settle12(80)
+    const m1 = modalNow()
+    ok(!!m1 && win.document.body.contains(m1) && win.document.body.querySelectorAll('.dshsp-modal').length === 1,
+      '点「⋯」→ 设置面板挂在 document.body 上（同一时刻只有一个）')
+    ok(configCalls.some((c) => c.method === 'GET' && c.url === '/dsh-sp/config'), '打开时 GET /dsh-sp/config 读当前配置')
+    const minput = m1.querySelector('.dshsp-modal-input')
+    ok(!!minput && minput.value === BACKUP_DIR && minput.placeholder === '新的备份文件夹绝对路径',
+      '输入框预填当前备份路径 + 占位提示', minput && minput.value)
+    ok(m1.querySelector('.dshsp-modal-cur').textContent.includes(BACKUP_DIR), '「当前」显示当前路径', m1.querySelector('.dshsp-modal-cur').textContent)
+    ok(m1.querySelector('.dshsp-modal-cur').querySelectorAll('wbr').length > 0,
+      '路径按分隔符给了换行点（长路径不从词中间断开）', String(m1.querySelector('.dshsp-modal-cur').querySelectorAll('wbr').length))
+    ok(m1.querySelector('.dshsp-modal-hint').textContent.includes(BACKUP_DEFAULT), '提示里含默认路径', m1.querySelector('.dshsp-modal-hint').textContent)
+    ok(m1.querySelector('.dshsp-modal-confirm').style.display === 'none' && m1.querySelector('.dshsp-modal-msg').textContent === '',
+      '刚打开：确认区收起、提示区为空')
+    ok(m1.querySelector('.dshsp-modal-title').textContent === '设置' && m1.querySelector('.dshsp-modal-sec').textContent === '备份路径'
+      && m1.querySelector('.dshsp-modal-save').textContent === '保存'
+      && m1.querySelector('.dshsp-modal-reset').textContent === '恢复默认' && m1.querySelector('.dshsp-modal-cancel').textContent === '取消',
+      '设置面板：标题「设置」+ 小节「备份路径」+ 三个按钮文案齐')
+
+    // ③ 同一路径（大小写与 / \ 归一后）→ 只提示、不发请求
+    const posts0 = cfgPosts().length
+    setVal(minput, BACKUP_DIR.replace(/\\/g, '/').toUpperCase() + '/')
+    await click12(m1.querySelector('.dshsp-modal-save'))
+    await settle12(60)
+    ok(m1.querySelector('.dshsp-modal-msg').textContent === '新路径与当前路径相同', '同一路径 → 提示「新路径与当前路径相同」', m1.querySelector('.dshsp-modal-msg').textContent)
+    ok(cfgPosts().length === posts0, '同路径不发任何 POST 请求')
+
+    // ④ 新路径 → 试算（只带 backupDir）
+    setVal(minput, BACKUP_NEW)
+    await click12(m1.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    const dry = cfgPosts().pop()
+    ok(!!dry && dry.body.backupDir === BACKUP_NEW && dry.body.confirm === undefined && dry.body.reset === undefined,
+      '试算 POST 只带 backupDir，没有 confirm 字段', JSON.stringify(dry && dry.body))
+    const cbox = m1.querySelector('.dshsp-modal-confirm')
+    ok(cbox.style.display !== 'none', '试算要搬文件 → 出现确认区')
+    ok(cbox.querySelector('.dshsp-modal-confirm-title').textContent === '确认修改备份路径', '确认区标题正确')
+    {
+      const ctext = cbox.querySelector('.dshsp-modal-confirm-body').textContent
+      ok(ctext.includes(BACKUP_DIR) && ctext.includes(BACKUP_NEW) && ctext.includes('2 个文件'),
+        '确认正文含旧路径、新路径、文件数', ctext)
+    }
+
+    // ⑤ 点「确定」→ 带 confirm:true，成功后关框并闪提示
+    const confirms0 = cfgConfirms().length
+    await click12(cbox.querySelector('.dshsp-modal-ok'))
+    await settle12(80)
+    const ex = cfgPosts().pop()
+    ok(cfgConfirms().length === confirms0 + 1 && ex.body.confirm === true && ex.body.backupDir === BACKUP_NEW,
+      '点「确定」→ 带 confirm:true 的 POST（目标不变）', JSON.stringify(ex && ex.body))
+    ok(!modalNow(), '成功后弹框从 DOM 移除')
+    ok(dstatus.textContent === '已将 2 个备份文件移动至新文件夹', '文档工具条闪出搬运结果（走 barFlash）', dstatus.textContent)
+
+    // ⑥ 取消
+    await click12(dbackup)
+    await settle12(80)
+    const m2 = modalNow()
+    ok(!!m2, '再点「备份」能重新打开弹框')
+    setVal(m2.querySelector('.dshsp-modal-input'), BACKUP_NEW)
+    await click12(m2.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    ok(m2.querySelector('.dshsp-modal-confirm').style.display !== 'none', '前提：确认区已出现')
+    const confirms1 = cfgConfirms().length
+    await click12(m2.querySelector('.dshsp-modal-confirm-cancel'))
+    ok(!!modalNow() && modalNow().querySelector('.dshsp-modal-confirm').style.display === 'none',
+      '确认区「取消」只收起确认区，弹框留着')
+    await click12(modalNow().querySelector('.dshsp-modal-cancel'))
+    ok(!modalNow(), '点「取消」→ 弹框消失')
+    ok(cfgConfirms().length === confirms1, '取消不发任何 confirm POST')
+
+    // ⑦ 恢复默认 → {reset:true}
+    await click12(dbackup)
+    await settle12(80)
+    const m3 = modalNow()
+    await click12(m3.querySelector('.dshsp-modal-reset'))
+    await settle12(80)
+    const rq = cfgPosts().pop()
+    ok(!!rq && rq.body.reset === true && rq.body.backupDir === undefined && rq.body.confirm === undefined,
+      '「恢复默认」试算发的是 {reset:true}', JSON.stringify(rq && rq.body))
+    ok(m3.querySelector('.dshsp-modal-confirm').style.display !== 'none'
+      && m3.querySelector('.dshsp-modal-confirm-body').textContent.includes(BACKUP_DEFAULT),
+      '恢复默认也走确认区（正文含默认路径）')
+    await click12(m3.querySelector('.dshsp-modal-cancel'))
+    ok(!modalNow(), '取消后弹框收起')
+
+    // ⑧ 试算失败：显示错误文案、不出确认区
+    const cfgPostOrig = configPostResponse
+    configPostResponse = () => ({ ok: false, error: 'not-absolute' })
+    await click12(dbackup)
+    await settle12(80)
+    const m4 = modalNow()
+    setVal(m4.querySelector('.dshsp-modal-input'), 'backups')
+    await click12(m4.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    ok(m4.querySelector('.dshsp-modal-msg').textContent === '请输入绝对路径（如 D:\\备份）',
+      '试算失败 → 显示该错误码对应文案', m4.querySelector('.dshsp-modal-msg').textContent)
+    ok(m4.querySelector('.dshsp-modal-confirm').style.display === 'none', '失败不出确认区')
+    {
+      const postsBeforeEmpty = cfgPosts().length
+      setVal(m4.querySelector('.dshsp-modal-input'), '   ')
+      await click12(m4.querySelector('.dshsp-modal-save'))
+      await settle12(40)
+      ok(m4.querySelector('.dshsp-modal-msg').textContent === '路径不能为空' && cfgPosts().length === postsBeforeEmpty,
+        '空路径就地提示，不发请求')
+    }
+    configPostResponse = () => ({ ok: false, error: 'weird-code' })
+    setVal(m4.querySelector('.dshsp-modal-input'), BACKUP_NEW)
+    await click12(m4.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    ok(m4.querySelector('.dshsp-modal-msg').textContent === '操作失败：weird-code', '未知错误码回落「操作失败：<码>」', m4.querySelector('.dshsp-modal-msg').textContent)
+    configPostResponse = () => { throw new Error('boom') }
+    await click12(m4.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    ok(/^操作失败：/.test(m4.querySelector('.dshsp-modal-msg').textContent) && !!modalNow(),
+      '网络异常也只落错误文案，弹框留着、不白屏', m4.querySelector('.dshsp-modal-msg').textContent)
+    configPostResponse = cfgPostOrig
+    await click12(m4.querySelector('.dshsp-modal-cancel'))
+
+    // ⑧.5 读配置失败也要能开框（当前路径留空，不抛不白屏）
+    const cfgGetOrig = configGetResponse
+    configGetResponse = () => ({ ok: false, error: 'bad-json' })
+    await click12(dbackup)
+    await settle12(80)
+    const m4b = modalNow()
+    ok(!!m4b && m4b.querySelector('.dshsp-modal-input').value === '' && m4b.querySelector('.dshsp-modal-msg').textContent === '',
+      '读配置失败也照常开框（当前路径留空，不抛不白屏）', m4b && m4b.querySelector('.dshsp-modal-input').value)
+    configGetResponse = cfgGetOrig
+    await click12(m4b.querySelector('.dshsp-modal-cancel'))
+
+    // ⑧.7 个别文件没搬成：提示里必须说清失败数，不能只报成功
+    const cfgPostPartial = configPostResponse
+    configPostResponse = (body) => {
+      if (body && body.confirm) return { ok: true, backupDir: body.backupDir, moved: 2, failed: 1, skipped: 0, backupCount: 5 }
+      return { ok: true, dryRun: true, from: BACKUP_DIR, to: (body && body.backupDir) || '', willMove: 3, skipped: 0, toExists: false, toBackupCount: 0, isDefault: false }
+    }
+    await click12(dbackup)
+    await settle12(80)
+    const m4c = modalNow()
+    setVal(m4c.querySelector('.dshsp-modal-input'), BACKUP_NEW)
+    await click12(m4c.querySelector('.dshsp-modal-save'))
+    await settle12(80)
+    await click12(m4c.querySelector('.dshsp-modal-ok'))
+    await settle12(80)
+    ok(!modalNow() && dstatus.textContent === '已将 2 个备份文件移动至新文件夹；另有 1 个未能移动，仍保留在旧文件夹',
+      '个别文件没搬成时，提示里说清失败数', dstatus.textContent)
+    configPostResponse = cfgPostPartial
+
+    // ⑧.8 新路径＝当前路径、以及「已经在默认路径上」：都不该弹确认框
+    {
+      const cfgGetReset = configGetResponse
+      configGetResponse = () => ({ ok: true, backupDir: BACKUP_DEFAULT, defaultDir: BACKUP_DEFAULT, isDefault: true, exists: true, backupCount: 1 })
+      const postsBeforeDefault = cfgPosts().length
+      await click12(dbackup)
+      await settle12(80)
+      const m6 = modalNow()
+      await click12(m6.querySelector('.dshsp-modal-reset'))
+      await settle12(80)
+      ok(cfgPosts().length === postsBeforeDefault && m6.querySelector('.dshsp-modal-msg').textContent === '已位于默认路径',
+        '已经在默认目录时点「恢复默认」：只提示、不发请求', m6.querySelector('.dshsp-modal-msg').textContent)
+      ok(m6.querySelector('.dshsp-modal-confirm').style.display === 'none', '也不出确认区')
+      await click12(m6.querySelector('.dshsp-modal-cancel'))
+      configGetResponse = cfgGetReset
+    }
+    {
+      const cfgPostSame = configPostResponse
+      configPostResponse = () => ({ ok: true, dryRun: true, from: BACKUP_DIR, to: BACKUP_DIR, willMove: 0, skipped: 0, toExists: true, toBackupCount: 0, isDefault: false })
+      await click12(dbackup)
+      await settle12(80)
+      const m7 = modalNow()
+      setVal(m7.querySelector('.dshsp-modal-input'), BACKUP_NEW)
+      await click12(m7.querySelector('.dshsp-modal-save'))
+      await settle12(80)
+      ok(m7.querySelector('.dshsp-modal-msg').textContent === '新路径与当前路径相同' && m7.querySelector('.dshsp-modal-confirm').style.display === 'none',
+        '服务端说「新路径＝当前」时只提示、不出确认区', m7.querySelector('.dshsp-modal-msg').textContent)
+      await click12(m7.querySelector('.dshsp-modal-cancel'))
+      configPostResponse = cfgPostSame
+    }
+
+    // ⑨ Esc 与点遮罩都能关
+    await click12(dbackup)
+    await settle12(80)
+    ok(!!modalNow(), '前提：弹框已开')
+    await key12('Escape')
+    ok(!modalNow(), 'Esc 关闭弹框')
+    await click12(dbackup)
+    await settle12(80)
+    await click12(modalNow())
+    ok(!modalNow(), '点遮罩空白处关闭弹框')
+
+    // ⑩ 对比条打开：成功闪的是对比条状态区（rvFlash）
+    await click12(rbackup)
+    await settle12(80)
+    const m5 = modalNow()
+    ok(!!m5, '对比条按钮也能打开弹框')
+    await click12(m5.querySelector('.dshsp-modal-reset'))
+    await settle12(80)
+    const rq2 = cfgPosts().pop()
+    ok(!!rq2 && rq2.body.reset === true && rq2.body.confirm === undefined, '对比条走「恢复默认」：试算 {reset:true}', JSON.stringify(rq2 && rq2.body))
+    await click12(m5.querySelector('.dshsp-modal-ok'))
+    await settle12(80)
+    const rq3 = cfgPosts().pop()
+    ok(!!rq3 && rq3.body.reset === true && rq3.body.confirm === true, '对比条「确定」→ {reset:true,confirm:true}', JSON.stringify(rq3 && rq3.body))
+    ok(!modalNow(), '对比条流程完成后弹框移除')
+    ok(rstatus12.textContent === '已将 2 个备份文件移动至新文件夹', '对比条闪出搬运结果（走 rvFlash）', rstatus12.textContent)
+
+    // ⑪ 源编辑视图的「⋯」：成功提示要落在它自己的状态区（回归：which 被压成 doc 时这里没有任何提示）
+    {
+      const scont = win.document.createElement('div')
+      win.document.body.appendChild(scont)
+      let sroot = null
+      await act(async () => { sroot = ReactDOMClient.createRoot(scont); sroot.render(React.createElement(bus.Body, props)) })
+      await settle12(150)
+      const sbtn = [...scont.querySelectorAll('.dshsp-bar button')].find((b) => b.getAttribute('data-dshsp-settings') === '1')
+      ok(!!sbtn, '前提：源编辑视图有「⋯」按钮')
+      await click12(sbtn)
+      await settle12(80)
+      const sm = modalNow()
+      setVal(sm.querySelector('.dshsp-modal-input'), BACKUP_NEW)
+      await click12(sm.querySelector('.dshsp-modal-save'))
+      await settle12(80)
+      await click12(sm.querySelector('.dshsp-modal-ok'))
+      await settle12(80)
+      const sst = scont.querySelector('.dshsp-status')
+      ok(!modalNow() && !!sst && sst.textContent === '已将 2 个备份文件移动至新文件夹',
+        '源编辑视图改完备份路径：提示落在它自己的状态区', sst && sst.textContent)
+      await act(async () => { sroot.unmount() })
+      scont.remove()
+      await settle12(80)
+    }
+
+    // 收尾：留一个开着的弹框交给 teardown
+    await click12(rbackup)
+    await settle12(80)
+    ok(!!modalNow(), '4.12 收尾：留一个开着的弹框给 teardown')
+    dpane.remove()
+    rscope12.remove()
+    await settle12(150)
+  }
+
   await act(async () => { bus.teardown() })
   ok(!win.document.querySelector('.dshsp-ogroup'), 'teardown 后增强层工具条回收（含对比页）')
+  ok(!win.document.querySelector('.dshsp-modal'), 'teardown 后 document.body 里不留弹框节点')
   pane.remove()
+}
+
+// ================= 4.13) 英文界面：原先硬编码的中文提示全部走字典 =================
+{
+  const T = bus._test.tpl, R = bus._test.tr
+  const BAK_EN = ' (previous version backed up automatically)'
+  const BAK_ZH = '（旧版已自动备份）'
+
+  // ① 字典层：英文为英文；中文与改前的字符串拼接逐字一致
+  win.document.documentElement.lang = 'en'
+  ok(T('flash.saved', { size: '2.0 KB', bak: R('flash.bak-note') }) === 'Saved 2.0 KB' + BAK_EN,
+    '英文：保存成功提示（含「旧版已自动备份」后缀）走英文', T('flash.saved', { size: '2.0 KB', bak: R('flash.bak-note') }))
+  ok(T('flash.saved', { size: '2.0 KB', bak: '' }) === 'Saved 2.0 KB', '英文：没有备份时不带中文括号后缀')
+  ok(R('flash.exit-edit-first') === 'Exit editing before searching', '英文：编辑中搜索的提示走英文', R('flash.exit-edit-first'))
+  ok(T('rv.located', { n: 12 }) === 'Located line 12 (the left side is a read-only historical comparison); Ctrl+S saves, Esc exits',
+    '英文：对比页「已定位到第 N 行」走英文', T('rv.located', { n: 12 }))
+  ok(R('err.not-utf8') === 'Not a UTF-8 text file; editing could corrupt it, so it was blocked', '英文：非 UTF-8 阻止提示走英文', R('err.not-utf8'))
+  ok(R('confirm.discard') === 'There are unsaved changes. Discard them and exit editing?', '英文：放弃修改的确认框走英文')
+
+  win.document.documentElement.lang = 'zh-CN'
+  ok(T('flash.saved', { size: '2.0 KB', bak: R('flash.bak-note') }) === '已保存 2.0 KB' + BAK_ZH, '中文：保存成功提示与改前逐字一致')
+  ok(T('flash.saved', { size: '2.0 KB', bak: '' }) === '已保存 2.0 KB', '中文：没有备份时不带后缀')
+  ok(R('flash.exit-edit-first') === '请先退出编辑再搜索', '中文：编辑中搜索的提示逐字一致')
+  ok(T('rv.located', { n: 12 }) === '已定位到第 12 行（左侧是历史对照，只读）；Ctrl+S 保存，Esc 退出', '中文：对比页定位提示逐字一致')
+  ok(T('rv.saved-flash', { size: '2.0 KB', bak: BAK_ZH, note: '左侧对比是历史快照，不会随之更新' }) === '已保存 2.0 KB' + BAK_ZH + '；左侧对比是历史快照，不会随之更新',
+    '中文：对比页保存提示逐字一致')
+  ok(R('err.not-utf8') === '非 UTF-8 文本文件，编辑可能损坏内容，已阻止', '中文：非 UTF-8 阻止提示逐字一致')
+  ok(R('confirm.discard') === '有未保存的修改，确定放弃并退出编辑吗？', '中文：放弃修改的确认框逐字一致')
+
+  // ② 真 DOM：源编辑视图的保存成功提示 / 编辑中按 Ctrl+F 的提示
+  const savedResp = saveResponse
+  saveResponse = () => ({ ok: true, mtimeMs: 6000, bytes: 2048, backup: 'x' })
+  const scont = win.document.createElement('div')
+  win.document.body.appendChild(scont)
+  let sroot = null
+  const sbtns = () => [...scont.querySelectorAll('.dshsp-bar button')]
+  const sstat = () => { const el = scont.querySelector('.dshsp-status'); return el ? el.textContent : '(无状态区)' }
+  const sEnterEdit = async (btnText) => {
+    const eb = sbtns().find((b) => b.textContent.trim() === btnText)
+    await act(async () => { eb.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+    const ta = scont.querySelector('textarea.dshsp-ta')
+    // Ctrl+F 快捷键要求滚动容器可见（编辑态的滚动容器就是 textarea）
+    if (ta) Object.defineProperty(ta, 'offsetParent', { value: scont, configurable: true })
+  }
+  const sCtrlF = async () => {
+    await act(async () => { win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })) })
+  }
+  await act(async () => { sroot = ReactDOMClient.createRoot(scont); sroot.render(React.createElement(bus.Body, props)) })
+
+  win.document.documentElement.lang = 'en'
+  await act(async () => { sroot.render(React.createElement(bus.Body, props)) })
+  await sEnterEdit('Edit')
+  ok(!!scont.querySelector('textarea.dshsp-ta'), '前提：英文界面能进编辑态')
+  await sCtrlF()
+  ok(sstat() === 'Exit editing before searching', '英文：编辑中按 Ctrl+F 提示走英文（真 DOM）', sstat())
+  const enSave = sbtns().find((b) => /^Save/.test(b.textContent.trim()))
+  await act(async () => { enSave.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+  ok(sstat() === 'Saved 2.0 KB' + BAK_EN, '英文：保存成功提示走英文（真 DOM）', sstat())
+
+  win.document.documentElement.lang = 'zh-CN'
+  await act(async () => { sroot.render(React.createElement(bus.Body, props)) })
+  await sEnterEdit('编辑')
+  await sCtrlF()
+  ok(sstat() === '请先退出编辑再搜索', '中文：编辑中按 Ctrl+F 提示逐字一致（真 DOM）', sstat())
+  const zhSave = sbtns().find((b) => /^保存/.test(b.textContent.trim()))
+  await act(async () => { zhSave.dispatchEvent(new win.MouseEvent('click', { bubbles: true })) })
+  ok(sstat() === '已保存 2.0 KB' + BAK_ZH, '中文：保存成功提示逐字一致（真 DOM）', sstat())
+
+  await act(async () => { sroot.unmount() })
+  scont.remove()
+  saveResponse = savedResp
+  win.document.documentElement.lang = ''
+
+  // ③ 抛错文案：非 UTF-8 真异常也要跟着界面语言走
+  const savedRead = ENV_REMOTE.workspaceFiles.readBytes
+  ENV_REMOTE.workspaceFiles.readBytes = async () => ({ ok: true, value: { absolutePath: FAKE_ABS, version: 'v1', bytes: 3, data: new Uint8Array([0xff, 0xfe, 0x41]) } })
+  const errMsg = async () => { try { await bus._test.readWholeText(props.resourceAddress); return '(没有抛错)' } catch (e) { return String(e && e.message) } }
+  win.document.documentElement.lang = 'en'
+  const enErr = await errMsg()
+  ok(enErr === 'Not a UTF-8 text file; editing could corrupt it, so it was blocked', '英文：非 UTF-8 抛错文案走英文（真异常）', enErr)
+  win.document.documentElement.lang = 'zh-CN'
+  const zhErr = await errMsg()
+  ok(zhErr === '非 UTF-8 文本文件，编辑可能损坏内容，已阻止', '中文：非 UTF-8 抛错文案逐字一致（真异常）', zhErr)
+  ENV_REMOTE.workspaceFiles.readBytes = savedRead
+  win.document.documentElement.lang = ''
 }
 
 // ================= 5) 加载器 apply：注册 + 热装载 + 回收 =================
@@ -889,7 +1314,7 @@ await act(async () => root_.unmount())
     await act(async () => { r9.unmount() })
     host.remove()
   }
-  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.3', '首轮 tick 已完成业务热装载')
+  ok(api._test.bus.cur && api._test.bus.cur.version === '0.4.4', '首轮 tick 已完成业务热装载')
   ok(!!win.document.querySelector('style[data-plugin-css="dsh-sidebar-plus"]'), '样式由业务 css 注入')
   for (const fn of effectDisposers) { try { const inner = fn(); if (typeof inner === 'function') inner() } catch (e) { /* ignore */ } }
   await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
